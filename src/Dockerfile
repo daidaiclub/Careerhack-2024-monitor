@@ -1,4 +1,4 @@
-FROM python:3.11.6-alpine
+FROM --platform=linux/amd64 python:3.11.6-alpine
 
 WORKDIR /app
 COPY ./requirements.txt /app/requirements.txt
