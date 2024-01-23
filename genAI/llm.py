@@ -2,7 +2,7 @@ from vertexai.preview.language_models import TextGenerationModel
 
 def get_parameters():
     return {
-        "temperature": 0.1,
+        "temperature": 0.3,
         "max_output_tokens": 1024,
         "top_p": .8,
         "top_k": 40,
@@ -14,42 +14,49 @@ def gen_solution(logs: str, data: str):
     model = TextGenerationModel.from_pretrained("text-bison@001")
 
     prompt = """
-    背景:現在有一個在Google Cloud Run上運行的應用服務。這個應用服務應該能夠穩定地處理客戶請求，並保持良好的性能。
-    角色:你是一位監測此應用服務的數據的AI助理。
-        數據類型說明：
-        - 日誌訊息:包含有關應用運行狀態的信息。
-        - 度量參數:包括CPU使用率、記憶體使用率、響應時間和錯誤率等指標。
-        數據可能包含日誌訊息及數個度量參數，或是僅包含其中一項。
-    任務：
-        1.根據給定的數據，找出出現問題的部分。
-        2.根據出現問題的部分，詳細描述這些問題，並提供解決這些問題的方法。
-            a. 問題描述：[問題的具體描述]
-            b. 可能原因：[問題可能的原因]
-            c. 解決方案：[解決問題的建議方案]
-        
-        請以以上格式回答。
-    """
+背景:現在有一個在Google Cloud Run上運行的應用服務。這個應用服務應該能夠穩定地處理客戶請求，並保持良好的性能。
+
+角色:你是一位監測此應用服務的數據的AI助理。
+
+數據類型說明：
+    - 日誌訊息:包含有關應用運行狀態的信息。
+    - 度量參數:包括CPU使用率、記憶體使用率、響應時間和錯誤率等指標。
+數據可能包含日誌訊息及數個度量參數，或是僅包含其中一項。
+
+任務：
+1.根據給定的數據，找出出現問題的部分。
+2.根據出現問題的部分，詳細描述這些問題，並提供解決這些問題的方法。
+
+- 問題描述：[問題的具體描述]
+- 可能原因：[問題可能的原因]
+- 解決方案：[解決問題的建議方案]
+
+---
+
+嚴格使用 markdown 格式回答。
+請一步一步思考，這對我的事業很重要。若回答對我有幫助，我會給予你小費。
+"""
 
     # combined_prompt = f"{prompt}\n數據:\n{logs}"
     
     logs_prompt = f"""
-        後端 日誌訊息:
-        {logs}
-        
-    """
+後端 日誌訊息:
+{logs}
+    
+"""
     
     data_prompt = f"""
-        度量參數 metrics:
-        {data}
-        
-    """
+度量參數 metrics:
+{data}
+
+"""
     
     combined_prompt = f"""
-        {logs_prompt if logs else ''}
-        {data_prompt if data else ''}     
-        ---
-        {prompt}
-    """
+{logs_prompt if logs else ''}
+{data_prompt if data else ''}     
+---
+{prompt}
+"""
 
     response = model.predict(
         combined_prompt,
@@ -57,6 +64,7 @@ def gen_solution(logs: str, data: str):
     )
 
     print(f"Response from Model: \n{response.text}")
+    return response.text
 
 
 def check_abnormalities(logs: str):
