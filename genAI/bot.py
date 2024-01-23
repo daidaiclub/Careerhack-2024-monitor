@@ -7,9 +7,13 @@ import pandas as pd
 
 from llm import gen_solution
 from main import simulate_realtime_csv, check_metrics_abnormalities
+import os
+
+from dotenv import load_dotenv
+load_dotenv()
 
 # 設置 Discord Bot 的 Token
-TOKEN = 'MTEyMTk5MTYzNzAyMzg2NjkyMA.G7f008.SL84dpUvS7vWqfGKRUdX8jXJ5X50tj7P6ul8qw'
+TOKEN = os.getenv('DISCORD_TOKEN')
 
 # 創建一個 bot 實例
 bot = commands.Bot(command_prefix='!', intents=discord.Intents.all())
