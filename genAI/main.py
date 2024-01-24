@@ -1,13 +1,13 @@
 # Path: genAI/main.py
 
-from llm import gen_solution
+from llm import LLM
 import pandas as pd
 from functools import reduce
 import os
 import time
 
 def simulate_realtime_csv() -> pd.DataFrame:
-    csv_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'ICSD Cloud Resource Sample'))
+    csv_dir = os.path.join(os.path.dirname(__file__), '..', 'ICSD Cloud Resource Sample')
 
     cpu_utilization = pd.read_csv(os.path.join(csv_dir, 'Container CPU Utilization.csv'))
     memory_utilization = pd.read_csv(os.path.join(csv_dir, 'Container Memory Utilization.csv'))
@@ -72,5 +72,6 @@ if __name__ == '__main__':
         metrics_datas.append(i)
         if check_metrics_abnormalities(i, times):
             print(str(metrics_datas[-5:]))
-            gen_solution('', str(metrics_datas[-5:]))
+            res = LLM.AnalysisError.gen("指標：\n" + str(metrics_datas[-5:]))
+            print(res)
             break
