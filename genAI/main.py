@@ -1,6 +1,6 @@
 # Path: genAI/main.py
 
-from llm import gen_solution
+from .llm import gen_solution
 import pandas as pd
 from functools import reduce
 import os
