@@ -9,7 +9,7 @@ def fetch_metric(project_id="tsmccareerhack2024-icsd-grp3", metric_type="run.goo
   query = Query(client, 
                       project="tsmccareerhack2024-icsd-grp3", 
                       metric_type="run.googleapis.com/request_count", 
-                      hours=100)
+                      hours=1)
   # 增加篩選條件：地區和資源類型
   query = query.select_resources(zone='us-central1')
   query = query.select_resources(resource_type='cloud_run_revision')
