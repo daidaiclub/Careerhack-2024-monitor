@@ -41,7 +41,7 @@ class CloudRunResourceManager:
       service = self.client.get_service(name=
         f'projects/{self.project_id}/locations/{self.region}/services/{self.service_name}'
       )
-      
+
       request = run_v2.UpdateServiceRequest(
         service=service,
       )

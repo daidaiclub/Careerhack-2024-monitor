@@ -85,15 +85,16 @@ def test_llm_task(monkeypatch):
 
     assert instance == "instance"
     
+    
+@pytest.fixture
+def mock_llm_task(monkeypatch):
+    def mock_llm_task_impl(task_name, prompt, parameters):
+        return MagicMock(spec=LLMSingleton)
+    
+    monkeypatch.setattr(llm, "llm_task", mock_llm_task_impl)
+    
+    return mock_llm_task_impl
 class TestLLM:
-    @pytest.fixture
-    def mock_llm_task(self, monkeypatch):
-        def mock_llm_task_impl(task_name, prompt, parameters):
-            return MagicMock(spec=LLMSingleton)
-        
-        monkeypatch.setattr(llm, "llm_task", mock_llm_task_impl)
-        
-        return mock_llm_task_impl
     
     def test_analysis_error(self, mock_llm_task):
         llm = LLM()
