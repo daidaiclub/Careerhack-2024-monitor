@@ -8,6 +8,10 @@ from discord import HTTPException
 import websockets
 import dotenv
 import requests
+import json
+import base64
+import io
+
 
 # --- env
 
@@ -20,34 +24,85 @@ MONITOR_URL = os.getenv('MONITOR_URL')
 
 # --- logging
 
-logging.basicConfig(level=logging.DEBUG,
-                    format='%(asctime)s %(levelname)s [%(funcName)s]: %(message)s')
+logger = logging.getLogger(__name__)
+logger.setLevel(level=logging.DEBUG)
+handler = logging.StreamHandler()
+formatter = logging.Formatter('%(asctime)s %(levelname)s [%(funcName)s]: %(message)s')
+handler.setFormatter(formatter)
+logger.addHandler(handler)
 
 # --- global vars
 
-discord_channel = None
 
 # --- websockets
 
 
 async def websocket_handler(websocket, path):
     """handle websocket messages"""
-    global discord_channel
+    async for ws_message in websocket:
+        # logger.debug("received message:\n%s", ws_message)
+        try:
+            ws_message_json = json.loads(ws_message)
+        except json.decoder.JSONDecodeError as e:
+            logger.error('json decode error: %s', e)
+            continue
+        if not isinstance(ws_message_json, dict):
+            logger.error('message is not dict: %s', ws_message_json)
+            continue
 
-    async for message in websocket:
-        logging.debug("received message:\n%s", message)
+        if 'channel_id' not in ws_message_json:
+            logger.error('message does not contain "channel_id": %s', ws_message_json)
+            continue
+        message = ws_message_json.get('message', None)
+        file_base64 = ws_message_json.get('file_base64', None)
+        channel_id = ws_message_json['channel_id']
+        reply_to = ws_message_json.get('reply_to', None)
+        try:
+            channel_id = int(channel_id)
+        except ValueError as e:
+            logger.error('channel_id is not int: %s', e)
+            continue
+        if reply_to is not None:
+            try:
+                reply_to = int(reply_to)
+            except ValueError as e:
+                logger.error('reply_to is not int: %s', e)
+                continue
 
-        if not discord_channel:
-            logging.error("can't access channel: %s, retrying...",
-                          DISCORD_CHANNEL_ID)
-            discord_channel = client.get_channel(DISCORD_CHANNEL_ID)
+        channel = client.get_channel(channel_id)
+        if not channel:
+            logger.error("can't access channel: %s", channel_id)
+            continue
+        if not isinstance(channel, discord.TextChannel):
+            logger.error('channel is not TextChannel: %s', channel)
+            continue
+        if not channel.permissions_for(channel.guild.me).send_messages:
+            logger.error("can't send message to channel: %s", channel_id)
+            continue
 
-        if not discord_channel:
-            logging.error("can't access channel: %s", DISCORD_CHANNEL_ID)
-        else:
-            await discord_channel.send(message)
-            logging.debug("sent message to discord channel: %s",
-                          DISCORD_CHANNEL_ID)
+        file = None
+        if file_base64:
+            try:
+                file_bytes = base64.b64decode(file_base64)
+            except Exception as e:
+                logger.error('base64 decode error: %s', e)
+                continue
+            file = discord.File(io.BytesIO(file_bytes), 'report.pdf')
+        if reply_to:
+            try:
+                message_to_reply = await channel.fetch_message(reply_to)
+            except discord.NotFound:
+                logger.error('message to reply not found: %s', reply_to)
+                continue
+            if not message_to_reply:
+                logger.error('message to reply not found: %s', reply_to)
+                continue
+
+            await message_to_reply.reply(message, file=file)
+            logger.debug('replied to channel: %s, message: %s, file: %s', channel_id, reply_to, file)
+            continue
+        await channel.send(message, file=file)
+        logger.debug('sent to channel: %s', channel_id)
 
 # --- discord
 
@@ -58,22 +113,11 @@ client = commands.Bot(command_prefix='!', intents=intents)
 @client.event
 async def on_ready():
     """called when discord bot is ready"""
-    global discord_channel
-
-    if not discord_channel:
-        logging.debug('getting channel: %s', DISCORD_CHANNEL_ID)
-        discord_channel = client.get_channel(DISCORD_CHANNEL_ID)
-
-    if not discord_channel:
-        logging.error("can't access channel: %s", DISCORD_CHANNEL_ID)
-    else:
-        logging.debug('got channel: %s', DISCORD_CHANNEL_ID)
-
     try:
         synced = await client.tree.sync()
-        logging.debug('synced: %s', synced)
+        logger.debug('synced: %s', synced)
     except HTTPException as e:
-        logging.error('sync failed: %s', e)
+        logger.error('sync failed: %s', e)
 
 
 @client.event
@@ -81,14 +125,14 @@ async def on_message(message):
     """called when discord bot receives a message"""
     if message.author == client.user:
         return
-    logging.debug("received user message:\n%s", message)
+    logger.debug("received user message:\n%s", message)
     await client.process_commands(message)
 
 
 @client.command()
 async def ping(ctx, arg=''):
     """test ping pong"""
-    logging.debug('ping %s', arg)
+    logger.debug('ping %s', arg)
     await ctx.send(f'pong {arg}')
 
 
@@ -102,29 +146,60 @@ async def echo_by_monitor(interaction):
     headers = {
         'Content-Type': 'application/json'
     }
-    logging.debug('url: %s', url)
-    logging.debug('payload: %s', payload)
-    logging.debug('headers: %s', headers)
-    response = requests.post(url, json=payload, headers=headers, timeout=5)
-    logging.debug('response: %s', response)
+    logger.debug('url: %s', url)
+    logger.debug('payload: %s', payload)
+    logger.debug('headers: %s', headers)
+    response = requests.post(url, json=payload, headers=headers, timeout=10)
+    logger.debug('response: %s', response)
     await interaction.response.send_message(f'echo_by_monitor: {response}', ephemeral=True)
 
 
 @client.tree.command()
 async def slash_ping(interaction: discord.interactions.Interaction, arg: str = ''):
     """test slash ping pong"""
-    logging.debug('slash_ping %s', arg)
-    await interaction.response.send_message(f'pong {arg}', ephemeral=True)
+    logger.debug('slash_ping %s', arg)
+    await interaction.response.send_message(f'pong {arg}')
+    message = await interaction.original_response()
+    channel = message.channel
+    message_id = message.id
+    await interaction.followup.send(f'saved message {message_id}')
+
+    try:
+        message = await channel.fetch_message(message_id)
+        await message.reply(f'reply pong {arg}')
+        await message.edit(content=f'edited message {message_id}')
+    except discord.NotFound:
+        logger.error('message not found')
 
 
 @client.tree.command()
-async def gen_report_by_csv(interaction, zip_file: discord.Attachment = None):
+async def gen_report_by_csv(interaction: discord.interactions.Interaction, zip_file: discord.Attachment = None):
     """send zip file containing csv to generate report"""
     if zip_file:
-        logging.debug('received file: %s', zip_file)
-        await interaction.response.send_message('attachment received')
+        logger.debug('received file: %s', zip_file)
+        await interaction.response.send_message(f'attachment received: {zip_file}')
+        original_response = await interaction.original_response()
+        original_response_id = original_response.id
+        channel_id = original_response.channel.id
+
+        # send request to monitor
+        await zip_file.save('tmp.zip')
+        url = MONITOR_URL + '/gen'
+        files = {
+            'file': ('tmp.zip', open('tmp.zip', 'rb'), 'application/zip')
+        }
+        data = {
+            'channel_id': channel_id,
+            'original_response_id': original_response_id,
+        }
+        logger.debug('url: %s', url)
+        logger.debug('files: %s', files)
+        logger.debug('data: %s', data)
+        response = requests.post(url, files=files, data=data, timeout=10)
+        os.remove('tmp.zip')
+        await interaction.followup.send(f'sent request to monitor, waiting for response...')
     else:
-        logging.debug('no file received')
+        logger.debug('no file received')
         await interaction.response.send_message('no file, try again')
 
 # @client.tree.command()
@@ -145,9 +220,9 @@ async def register_cloud_run(
         project_id: str = '',
         service_name: str = ''):
     """register cloud run service in this channel"""
-    logging.debug('region: %s', region)
-    logging.debug('project_id: %s', project_id)
-    logging.debug('service_name: %s', service_name)
+    logger.debug('region: %s', region)
+    logger.debug('project_id: %s', project_id)
+    logger.debug('service_name: %s', service_name)
     await interaction.response.send_message('logout success', ephemeral=True)
 
 
@@ -158,9 +233,9 @@ async def unregister_cloud_run(
         project_id: str = '',
         service_name: str = ''):
     """unregister cloud run service in this channel"""
-    logging.debug('region: %s', region)
-    logging.debug('project_id: %s', project_id)
-    logging.debug('service_name: %s', service_name)
+    logger.debug('region: %s', region)
+    logger.debug('project_id: %s', project_id)
+    logger.debug('service_name: %s', service_name)
     await interaction.response.send_message('unregister_cloud_run', ephemeral=True)
 
 

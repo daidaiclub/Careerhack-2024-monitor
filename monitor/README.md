@@ -6,6 +6,10 @@
 DCBOT_SOCKET_URI=<dcbot websocket uri>
 ```
 
+## set `credentials.json`
+
+TODO
+
 ## Build and run
 
 ```bash

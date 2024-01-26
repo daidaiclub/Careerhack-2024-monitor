@@ -10,6 +10,7 @@ import datetime
 import zipfile
 import shutil
 import markdown
+import json
 
 from flaskr import dcbot
 from flaskr.db import init_db
@@ -72,18 +73,29 @@ def create_app(test_config=None) -> Flask:
         print(data, flush=True)
         if not isinstance(data, dict):
             return jsonify({'message': 'invalid json'}), 400
-        if 'message' not in data:
-            return jsonify({'message': 'message is required'}), 400
+
+        if 'channel_id' not in data:
+            return jsonify({'message': 'channel_id is required'}), 400
+
+        print('sending message to dcbot', flush=True)
+        ws_message = {
+            'channel_id': data['channel_id']
+        }
+        if 'message' in data:
+            ws_message['message'] = data['message']
+        if 'file_base64' in data:
+            ws_message['file_base64'] = data['file_base64']
+        if 'reply_to' in data:
+            ws_message['reply_to'] = data['reply_to']
 
         try:
-            print('sending message to dcbot', flush=True)
-            ws.send(data['message'])
+            ws.send(json.dumps(ws_message))
         except Exception as e:
-            print(e, flush=True)
+            print(f'error: {e}', flush=True)
             print('reconnecting dcbot', flush=True)
             try:
                 ws = connect_dcbot()
-                ws.send(data['message'])
+                ws.send(json.dumps(ws_message))
             except Exception as e:
                 print(e, flush=True)
                 return jsonify({'message': 'cannot send message'}), 500
