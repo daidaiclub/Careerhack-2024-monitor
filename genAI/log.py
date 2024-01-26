@@ -4,7 +4,6 @@ from datetime import datetime, timedelta
 def fetch_logs(project_id="tsmccareerhack2024-icsd-grp3", service_name="sso-tsmc", start_time=None, end_time=None, page_size=100):
   """
   預設回傳過去一小時內指定服務的日誌。
-
   :param project_id: Google Cloud 專案ID，預設為 'tsmccareerhack2024-icsd-grp3'。
   :param service_name: Cloud Run 服務名稱，預設為 'sso-tsmc'。
   :param start_time: 查詢的開始時間，預設為當前時間減一小時。
@@ -27,6 +26,8 @@ def fetch_logs(project_id="tsmccareerhack2024-icsd-grp3", service_name="sso-tsmc
   resource.labels.service_name="{service_name}"
   timestamp>="{start_time.isoformat()}Z"
   timestamp<="{end_time.isoformat()}Z"
+  ERROR
+  severity!="ERROR"
   """
 
   # 查詢日誌
