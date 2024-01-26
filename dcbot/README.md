@@ -5,7 +5,7 @@
 ```
 DISCORD_TOKEN=<your discord token>
 DISCORD_CHANNEL_ID=<your discord channel id>
-WEBSOCKET_PORT=<your websocket port>
+WEBSOCKET_PORT=8765
 ```
 
 ## Build and run
