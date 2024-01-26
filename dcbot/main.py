@@ -105,15 +105,15 @@ async def gen_report_by_csv(interaction, zip_file: discord.Attachment = None):
         print('[gen_report_by_csv] no file', flush=True)
         await interaction.response.send_message('no file, try again')
 
-@client.tree.command()
-async def login_gcp(interaction, email: str = '', password: str = ''):
-    print(f'[login_gcp] email: {email}, password: {password}', flush=True)
-    await interaction.response.send_message('login success', ephemeral = True)
+# @client.tree.command()
+# async def login_gcp(interaction, email: str = '', password: str = ''):
+#     print(f'[login_gcp] email: {email}, password: {password}', flush=True)
+#     await interaction.response.send_message('login success', ephemeral = True)
 
-@client.tree.command()
-async def logout_gcp(interaction):
-    print('[logout_gcp]', flush=True)
-    await interaction.response.send_message('logout success', ephemeral = True)
+# @client.tree.command()
+# async def logout_gcp(interaction):
+#     print('[logout_gcp]', flush=True)
+#     await interaction.response.send_message('logout success', ephemeral = True)
 
 @client.tree.command()
 async def register_cloud_run(interaction, region: str = '', project_id: str = '', service_name: str = ''):
