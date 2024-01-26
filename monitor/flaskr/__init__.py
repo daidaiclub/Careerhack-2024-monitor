@@ -20,21 +20,21 @@ def create_app(test_config=None) -> Flask:
 
     # websocket
     def connect_dcbot():
-        print(f'connecting dcbot to {DCBOT_SOCKET_URI}')
+        print(f'connecting dcbot to {DCBOT_SOCKET_URI}', flush=True)
         connected_event = asyncio.Event()
 
         def on_open(ws):
-            print("dcbot opened")
+            print("dcbot opened", flush=True)
             connected_event.set()
 
         def on_message(ws, message):
-            print(f"dcbot received: {message}")
+            print(f"dcbot received: {message}", flush=True)
 
         def on_error(ws, error):
-            print(f'error: {error}')
+            print(f'error: {error}', flush=True)
 
         def on_close(ws, close_status_code, close_msg):
-            print("dcbot closed")
+            print("dcbot closed", flush=True)
 
         ws = websocket.WebSocketApp(
             DCBOT_SOCKET_URI,
@@ -68,16 +68,16 @@ def create_app(test_config=None) -> Flask:
             return jsonify({'message': 'message is required'}), 400
 
         try:
-            print('sending message to dcbot')
+            print('sending message to dcbot', flush=True)
             ws.send(data['message'])
         except Exception as e:
-            print(e)
-            print('reconnecting dcbot')
+            print(e, flush=True)
+            print('reconnecting dcbot', flush=True)
             try:
                 ws = connect_dcbot()
                 ws.send(data['message'])
             except Exception as e:
-                print(e)
+                print(e, flush=True)
                 return jsonify({'message': 'cannot send message'}), 500
 
         return jsonify({'message': 'ok'}), 200
