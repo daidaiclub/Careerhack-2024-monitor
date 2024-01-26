@@ -6,3 +6,22 @@ services:
       - "8765:8765"
     env_file:
       - "dcbot/.env"
+    networks:
+      - tsmc-network
+    volumes:
+      - ./dcbot:/app
+  tsmc-monitor:
+    image: tsmc-monitor
+    ports:
+      - "8080:8080"
+    env_file:
+      - "monitor/.env"
+    networks:
+      - tsmc-network
+    volumes:
+      - ./monitor:/app
+
+
+networks:
+  tsmc-network:
+    driver: bridge
