@@ -20,3 +20,6 @@ build/
 Lib
 Scripts
 pyvenv.cfg
+# dev containers
+.devcontainer/
+.github/

@@ -1,8 +1,57 @@
+from abc import abstractmethod, ABC
+from datetime import datetime, timedelta
 from google.cloud import run_v2
+from google.cloud import monitoring_v3, logging_v2
+from google.cloud.monitoring_v3.query import Query
 
 import os
 import dotenv
+
 dotenv.load_dotenv()
+
+# Time Range interface
+class TimeRange(ABC):
+
+    @abstractmethod
+    def get_minutes(self) -> int:
+        pass
+
+    @abstractmethod
+    def get_time_range_iso(self) -> (str, str):
+        pass
+
+class UntilNowTimeRange(TimeRange):
+    def __init__(self, days: int, hours: int, minutes: int) -> None:
+        self.minutes = days * 24 * 60 + hours * 60 + minutes
+        self.start_time = datetime.utcnow() - timedelta(minutes=self.minutes)
+        self.end_time = datetime.utcnow()
+
+    def get_minutes(self) -> int:
+        return self.minutes
+    
+    def get_time_range_iso(self) -> (str, str):
+        return self.start_time.isoformat(), self.end_time.isoformat()
+
+class SpecificTimeRange(TimeRange):
+    def __init__(self, start_time: str, end_time: str) -> None:
+        self.start_time = datetime.fromisoformat(start_time)
+        self.end_time = datetime.fromisoformat(end_time)
+
+    def get_minutes(self) -> int:
+        return int((self.end_time - self.start_time).total_seconds()) // 60
+    
+    def get_time_range_iso(self) -> (str, str):
+        return self.start_time.isoformat(), self.end_time.isoformat()
+
+class CloudRun:
+    def __init__(self, region: str, project_id: str, service_name: str) -> None:
+        self.region = region
+        self.project_id = project_id
+        self.service_name = service_name
+
+    def get_full_server_name(self):
+        return f"projects/{self.project_id}/locations/{self.egion}/services/{self.service_name}"
+
 
 class CloudRunResourceManager:
   
