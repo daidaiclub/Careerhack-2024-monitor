@@ -17,6 +17,9 @@ build/
 .DS_Store
 .env
 
+Lib
+Scripts
+pyvenv.cfg
 # dev containers
 .devcontainer/
 .github/
