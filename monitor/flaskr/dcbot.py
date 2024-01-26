@@ -1,31 +1,39 @@
-import pandas as pd
-import os
-from flaskr.genAI.llm import LLM
 from functools import reduce
+from flask import jsonify
+from concurrent.futures import ThreadPoolExecutor, as_completed
+from datetime import datetime
+import threading
+import os
+import pandas as pd
+
+from flaskr.genAI.llm import LLM
+from flaskr.db import get_db
+from flaskr.genAI.cloud import CloudRun, CloudRunPerformanceMonitor, UntilNowTimeRange, SpecificTimeRange
+
 # 檢查指標是否異常
 class MetrixUtil:
     @staticmethod
-    def check_metrics_abnormalities(metrics: list):
+    def check_metrics_abnormalities(metrics: list[dict]):
         metric = metrics[-1]
 
-        if metric['Container Startup Latency (ms)'] > 0:
+        if metric.get('Container Startup Latency (ms)', 0) > 0:
             return True
 
-        if metric['Instance Count (active)'] > 4:
+        if metric.get('Instance Count (active)', 0) > 4:
             return True
 
-        if metric['Request Count (4xx)'] > 5:
+        if metric.get('Request Count (4xx)', 0) > 5:
             return True
         
-        if metric['Request Count (5xx)'] > 5:
+        if metric.get('Request Count (5xx)', 0) > 5:
             return True
 
         times_dict = {'cpu': 0, 'memory': 0}
 
         if len(metrics) >= 2:
             for metric in metrics[-2:]:
-                cpu_abnormal = metric['Container CPU Utilization (%)'] > 60
-                memory_abnormal = metric['Container Memory Utilization (%)'] > 80
+                cpu_abnormal = metric.get('Container CPU Utilization (%)', 0) > 60
+                memory_abnormal = metric.get('Container Memory Utilization (%)', 0) > 60
 
                 if cpu_abnormal:
                     times_dict['cpu'] += 1
@@ -39,8 +47,132 @@ class MetrixUtil:
 
         return times_dict['cpu'] >= 2 or times_dict['memory'] >= 2
 
+def polling_metric(crpm: CloudRunPerformanceMonitor):
+    until_now = UntilNowTimeRange(minutes=5)
+    metries_datas = []
 
-def gen(temp_dir: str):
+    metries_types_and_name = [
+        {
+            'metric_type': 'run.googleapis.com/request_count',
+            'options': {
+                'metric_label': 'response_code_class',
+                'metric_new_label': 'Request Count'
+            }
+        },
+        {
+            'metric_type': 'run.googleapis.com/request_latencies',
+            'options': {
+                'metric_label': 'Container Startup Latency (ms)',
+            }
+        },
+        {
+            'metric_type': 'run.googleapis.com/container/instance_count',
+            'options': {
+                'metric_label': 'state',
+                'metric_new_label': 'Instance Count'
+            }
+        },
+        {
+            'metric_type': 'run.googleapis.com/container/cpu/utilizations',
+            'options': {
+                'metric_label': 'Container CPU Utilization (%)',
+                'multiply': 100
+            }
+        },
+        {
+            'metric_type': 'run.googleapis.com/container/memory/utilizations',
+            'options': {
+                'metric_label': 'Container Memory Utilization (%)',
+                'multiply': 100
+            }
+        },
+        {
+            'metric_type': 'run.googleapis.com/container/startup_latencies',
+            'options': {
+                'metric_label': 'Container Startup Latency (ms)',
+            }
+        }
+    ]
+
+    def get_metric_wrapper(crpm: CloudRunPerformanceMonitor, metric_type: str, until_now, options: dict):
+        return crpm.get_metric(metric_type, until_now, options=options)
+
+    with ThreadPoolExecutor(max_workers=len(metries_types_and_name)) as executor:
+        future_to_metric = {
+            executor.submit(get_metric_wrapper,
+                            crpm,
+                            mt['metric_type'],
+                            until_now,
+                            options=mt['options']
+                            ): mt for mt in metries_types_and_name}
+
+        metries_datas = []
+        for future in as_completed(future_to_metric):
+            metries_datas.append(future.result())
+
+    res = pd.concat(metries_datas, axis=1)
+    ignore_dropna_fields = ['Container Startup Latency (ms)']
+    res = res.dropna(
+        subset=[col for col in res.columns if not col in ignore_dropna_fields])
+    res = res[sorted(res.columns)]
+    return res
+
+def get_lastest_llm_query_time(region, project_id, service_name):
+    db = get_db()
+    cursor = db.cursor()
+    
+    cursor.execute('''
+    SELECT lastest_llm_query_time FROM cloud_run_service WHERE region=? AND project_id=? AND service_name=?
+    ''', (region, project_id, service_name))
+    
+    return cursor.fetchone()[0]
+
+def set_lastest_llm_query_time(region, project_id, service_name, lastest_llm_query_time):
+    db = get_db()
+    cursor = db.cursor()
+    
+    cursor.execute('''
+    UPDATE cloud_run_service SET lastest_llm_query_time=? WHERE region=? AND project_id=? AND service_name=?
+    ''', (lastest_llm_query_time, region, project_id, service_name))
+    
+    db.commit()
+
+def is_cloud_run_service_registered(guild_id, channel_id, region, project_id, service_name):
+    db = get_db()
+    cursor = db.cursor()
+    
+    cursor.execute('''
+    SELECT * FROM cloud_run_service WHERE guild_id=? AND channel_id=? AND region=? AND project_id=? AND service_name=?
+    ''', (guild_id, channel_id, region, project_id, service_name))
+    
+    return cursor.fetchone() is not None
+
+def query(cr: CloudRun):
+    lastest_llm_query_time = get_lastest_llm_query_time(cr.region, cr.project_id, cr.service_name)
+    query_time = datetime.fromisoformat(lastest_llm_query_time) if lastest_llm_query_time else None
+    if not query_time is None and (datetime.now() - query_time).total_seconds() < 600:
+        return
+
+    crpm = CloudRunPerformanceMonitor(cr)
+    result = polling_metric(crpm)
+
+    metrcis = [item.to_dict() for item in result.iloc]
+    if MetrixUtil.check_metrics_abnormalities(metrcis):
+        # 獲取該 metrixs 的 第一筆資料 和 最後一筆資料 的時間
+        start_time, end_time = result.index[0], result.index[-1]
+        time_range = SpecificTimeRange(start_time, end_time)
+        logs = crpm.get_logs(time_range)
+
+        if logs is []:
+            logs = '沒有 log'
+
+        text = LLM.AnalysisError.gen(data=f'指標：\b{result.to_dict()}\n錯誤訊息:\n{logs}')
+        set_lastest_llm_query_time(cr.region, cr.project_id, cr.service_name, datetime.now().isoformat())
+
+        # todo: send to discord by websocket
+        print(text)
+
+def genai(temp_dir: str):
     data_frames = []
     for entry in os.listdir(temp_dir):
         data_frames.append(pd.read_csv(os.path.join(temp_dir, entry)))
@@ -48,10 +180,86 @@ def gen(temp_dir: str):
     merged_data = reduce(lambda left, right: pd.merge(
         left, right, on=['Time'], how='outer'), data_frames)
     merged_data = merged_data.set_index('Time')
-    mdpdf = "報告書\n"
+
+    # Generate markdown
+    mdpdf = "# 報告書\n"
     for i in range(2, len(merged_data) - 1):
-        metrics = [item.to_dict() for item in merged_data.iloc[i-2:i]]
+        metrics = [item.to_dict() for item in merged_data.iloc][i-2:i]
         if MetrixUtil.check_metrics_abnormalities(metrics):
             mdpdf += f'## 異常時間: {merged_data.index[i]}\n'
-            mdpdf += LLM.AnalysisError.gen(data=f'指標：{metrics[i-2:i].to_dict()}')
+            mdpdf += LLM.AnalysisError.gen(data=f'指標：{metrics}')
+            mdpdf += '\n'
+
     return mdpdf
+
+def register_cloud_run_service(guild_id, channel_id, region, project_id, service_name):
+    def run_timer(guild_id, channel_id, cr: CloudRun): 
+        if not is_cloud_run_service_registered(guild_id, channel_id, cr.region, cr.project_id, cr.service_name):
+            return
+        timer = threading.Timer(30, run_timer, [guild_id, channel_id, cr])
+        timer.daemon = True
+        timer.start()
+        query(cr)
+    db = get_db()
+    cursor = db.cursor()
+
+    # 插入資料前，先檢查是否已存在相同的主鍵組合
+    cursor.execute('''
+  SELECT * FROM cloud_run_service WHERE region=? AND project_id=? AND service_name=?
+  ''', (region, project_id, service_name))
+
+    if cursor.fetchone():
+        return jsonify({'message': 'Service already registered'}), 400
+    else:
+        # 插入新的記錄
+        cursor.execute('''
+    INSERT INTO cloud_run_service (guild_id, channel_id, region, project_id, service_name)
+    VALUES (?, ?, ?, ?, ?)
+    ''', (guild_id, channel_id, region, project_id, service_name))
+        db.commit()
+        timer_thread = threading.Thread(target=run_timer, args=(guild_id, channel_id, CloudRun(region, project_id, service_name)))
+        timer_thread.daemon = True
+        timer_thread.start()
+        return jsonify({'message': 'Service registered'}), 201
+
+def unregister_cloud_run_service(guild_id, channel_id, region, project_id, service_name):
+    db = get_db()
+    cursor = db.cursor()
+    
+    # 刪除符合條件的記錄
+    cursor.execute('''
+    DELETE FROM cloud_run_service WHERE guild_id=? AND channel_id=? AND region=? AND project_id=? AND service_name=?
+    ''', (guild_id, channel_id, region, project_id, service_name))
+    
+    if cursor.rowcount > 0:
+        # 如果有刪除記錄，提交變更並返回成功消息
+        db.commit()
+        return jsonify({'message': 'Service unregistered'}), 200
+    else:
+        # 如果沒有符合條件的記錄，返回錯誤消息
+        return jsonify({'message': 'Service not found'}), 404
+    
+def list_cloud_run_services(guild_id, channel_id):
+    db = get_db()
+    cursor = db.cursor()
+    
+    # 查詢符合條件的記錄
+    cursor.execute('''
+    SELECT * FROM cloud_run_service WHERE guild_id=? AND channel_id=?
+    ''', (guild_id, channel_id))
+    
+    services = []
+    for row in cursor.fetchall():
+        # 將查詢結果轉換為字典
+        service = {
+            'region': row[0],
+            'project_id': row[1],
+            'service_name': row[2],
+            'channel_id': row[3],
+            'lastest_llm_query_time': row[4],
+            'guild_id': row[5]
+        }
+        services.append(service)
+    
+    # 返回查詢結果作為 JSON
+    return jsonify(services), 200

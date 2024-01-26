@@ -1,24 +1,23 @@
+from weasyprint import HTML
+from io import BytesIO
+from flask import Flask, request, jsonify, send_file
 import os
 import websocket
-from flask import Flask, request, jsonify, g, send_file
-from flaskr import hello as h
-from flaskr import tmp as t
-from flaskr import dcbot as d
 import dotenv
 import threading
 import asyncio
 import datetime
 import zipfile
 import shutil
-from weasyprint import HTML
 import markdown
-from io import BytesIO
+
+from flaskr import dcbot
+from flaskr.db import init_db
 
 dotenv.load_dotenv()
-
-t.init_db()
-
 DCBOT_SOCKET_URI = os.getenv('DCBOT_SOCKET_URI')
+
+init_db()
 
 def create_app(test_config=None) -> Flask:
     # asyncio event loop
@@ -66,10 +65,6 @@ def create_app(test_config=None) -> Flask:
     def hello():
         return 'Hello, World!'
 
-    @app.route('/hello/<name>')
-    def hello_name(name):
-        return h.hello(name)
-
     @app.route('/dcbot/message', methods=['POST'])
     def dcbot_send():
         nonlocal ws
@@ -97,14 +92,15 @@ def create_app(test_config=None) -> Flask:
     
     @app.route('/gen', methods=['POST'])
     def gen():
+        # Validate file
         if 'file' not in request.files:
-            return jsonify({'message': 'file is required'}), 400
+            return jsonify({'message': 'file is required ss'}), 400
         
         file = request.files['file']
         if file.filename == '':
             return jsonify({'message': 'file is required'}), 400
+        
         if file and file.filename.endswith('.zip'):
-            # save zip to temp with now datetime dir
             now = datetime.datetime.now()
             temp_dir = f'temp-{now.strftime("%Y-%m-%d-%H-%M-%S")}'
             os.makedirs(temp_dir)
@@ -115,31 +111,28 @@ def create_app(test_config=None) -> Flask:
                 zip_ref.extractall(temp_dir)
             # remove zip
             os.remove(zip_path)
-            # 確認長度是否為 6
-            mdpdf = d.gen(temp_dir)
+
+            # gen AI report
+            mdpdf = dcbot.genai(temp_dir)
             shutil.rmtree(temp_dir)
             html = markdown.markdown(mdpdf)
             pdf = HTML(string=html).write_pdf()
             buffer = BytesIO(pdf)
+
             return send_file(buffer, as_attachment=True, download_name="output.pdf", mimetype='application/pdf')
+        
         return jsonify({'message': 'invalid file'}), 400
+    
     @app.route('/dcbot/guilds/<guild_id>/channels/<channel_id>/cloud_run_services/<region>/<project_id>/<service_name>', methods=['POST'])
     def register_cloud_run_service(guild_id, channel_id, region, project_id, service_name):
-        return t.register_cloud_run_service(guild_id, channel_id, region, project_id, service_name)
+        return dcbot.register_cloud_run_service(guild_id, channel_id, region, project_id, service_name)
     
     @app.route('/dcbot/guilds/<guild_id>/channels/<channel_id>/cloud_run_services/<region>/<project_id>/<service_name>', methods=['DELETE'])
     def unregister_cloud_run_service(guild_id, channel_id, region, project_id, service_name):
-        return t.unregister_cloud_run_service(guild_id, channel_id, region, project_id, service_name)
+        return dcbot.unregister_cloud_run_service(guild_id, channel_id, region, project_id, service_name)
     
     @app.route('/dcbot/guilds/<guild_id>/channels/<channel_id>/cloud_run_services', methods=['GET'])
     def list_cloud_run_services(guild_id, channel_id):
-        return t.list_cloud_run_services(guild_id, channel_id)
-    
-    @app.teardown_appcontext
-    def close_db(error):
-        # 如果這個請求中用到了資料庫連接，就關閉它
-        if 'db' in g:
-            g.db.close()
+        return dcbot.list_cloud_run_services(guild_id, channel_id)
 
-         
     return app

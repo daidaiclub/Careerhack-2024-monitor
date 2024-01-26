@@ -16,8 +16,6 @@ def get_db():
     db.row_factory = sqlite3.Row
     return db
 
-
-
 def init_db():
     db = get_db()
     with open('schema.sql') as f:
@@ -117,11 +115,11 @@ def query(cr: CloudRun):
 
 interval_seconds = 30
 def register_cloud_run_service(guild_id, channel_id, region, project_id, service_name):
-    def run_timer(guild_id, channel_id, cr: CloudRun):
-        query()
-        timer = threading.Timer(interval_seconds, run_timer, [guild_id, channel_id, region, project_id, service_name])
+    def run_timer(guild_id, channel_id, cr: CloudRun): 
+        timer = threading.Timer(interval_seconds, run_timer, [guild_id, channel_id, cr])
         timer.daemon = True
         timer.start()
+        query(cr)
 
 
     db = get_db()

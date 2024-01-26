@@ -24,10 +24,19 @@ class LLMSingleton:
         ---
         {self.prompt}
         """     
-        response = self.model.predict(
-            combined_prompt,
-            **self.parameters,
-        )
+        try:
+            response = self.model.predict(
+                combined_prompt,
+                **self.parameters,
+            )
+        except:
+            import time
+            time.sleep(50)
+            response = self.model.predict(
+                combined_prompt,
+                **self.parameters,
+            )
+
         return response.text
     
     def set_prompt(self, prompt: str):
