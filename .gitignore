@@ -25,3 +25,5 @@ pyvenv.cfg
 .github/
 
 credentials.json
+.github
+!/.github

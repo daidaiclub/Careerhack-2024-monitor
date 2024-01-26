@@ -1,12 +1,15 @@
+"""discord bot with slash commands and websockets"""
 import os
 import asyncio
+import logging
 import discord
 from discord.ext import commands
-from discord import app_commands
+from discord import HTTPException
 import websockets
 import dotenv
 import requests
-import json
+
+# --- env
 
 dotenv.load_dotenv()
 
@@ -15,65 +18,77 @@ DISCORD_CHANNEL_ID = int(os.getenv('DISCORD_CHANNEL_ID'))
 WEBSOCKET_PORT = int(os.getenv('WEBSOCKET_PORT'))
 MONITOR_URL = os.getenv('MONITOR_URL')
 
+# --- logging
+
+logging.basicConfig(level=logging.DEBUG,
+                    format='%(asctime)s %(levelname)s [%(funcName)s]: %(message)s')
+
+# --- global vars
+
 discord_channel = None
 
-# --- websockets ----
+# --- websockets
 
-async def response(websocket, path):
+async def websocket_handler(websocket, path):
+    """handle websocket messages"""
     global discord_channel
 
     async for message in websocket:
-        print(f"[ws server] message  < {message}", flush=True)
+        logging.debug("received message:\n%s", message)
 
         if not discord_channel:
-            print('[ws server] getting discord channel:', DISCORD_CHANNEL_ID, flush=True)
+            logging.error("can't access channel: %s, retrying...", DISCORD_CHANNEL_ID)
             discord_channel = client.get_channel(DISCORD_CHANNEL_ID)
-        
-        if not discord_channel:
-            print("[ws server] [ERROR] can't access channel:", DISCORD_CHANNEL_ID, flush=True)
-        else:
-            print('[ws server] channel:', discord_channel, 'message:', message, flush=True)
-            await discord_channel.send(message)
-            print('[ws server] message sent', flush=True)
 
-# --- discord ---
+        if not discord_channel:
+            logging.error("can't access channel: %s", DISCORD_CHANNEL_ID)
+        else:
+            await discord_channel.send(message)
+            logging.debug("sent message to discord channel: %s", DISCORD_CHANNEL_ID)
+
+# --- discord
 
 intents = discord.Intents.all()
 client = commands.Bot(command_prefix='!', intents=intents)
 
 @client.event
 async def on_ready():
+    """called when discord bot is ready"""
     global discord_channel
 
     if not discord_channel:
-        print('[on_ready] getting discord channel:', DISCORD_CHANNEL_ID, flush=True)
+        logging.debug('getting channel: %s', DISCORD_CHANNEL_ID)
         discord_channel = client.get_channel(DISCORD_CHANNEL_ID)
 
     if not discord_channel:
-        print("[on_ready] can't access channel:", DISCORD_CHANNEL_ID, flush=True)
+        logging.error("can't access channel: %s", DISCORD_CHANNEL_ID)
     else:
-        print('[on_ready] channel:', discord_channel, flush=True)
-    
+        logging.debug('got channel: %s', DISCORD_CHANNEL_ID)
+
     try:
         synced = await client.tree.sync()
-        print('[on_ready] synced:', synced, flush=True)
-    except Exception as e:
-        print('[on_ready] [ERROR] sync failed:', e, flush=True)
+        logging.debug('synced: %s', synced)
+    except HTTPException as e:
+        logging.error('sync failed: %s', e)
+
 
 @client.event
 async def on_message(message):
+    """called when discord bot receives a message"""
     if message.author == client.user:
         return
-    print('[on_message] message.content:', message.content, flush=True)
+    logging.debug("received user message:\n%s", message)
     await client.process_commands(message)
 
 @client.command()
 async def ping(ctx, arg=''):
-    print(f'[ping] ping {arg}', flush=True)
+    """test ping pong"""
+    logging.debug('ping %s', arg)
     await ctx.send(f'pong {arg}')
 
 @client.tree.command()
 async def echo_by_monitor(interaction):
+    """test send message to monitor to echo back"""
     url = MONITOR_URL + '/dcbot/message'
     payload = {
         'message': 'hello to monitor'
@@ -81,28 +96,27 @@ async def echo_by_monitor(interaction):
     headers = {
         'Content-Type': 'application/json'
     }
-    print('[echo_by_monitor] url:', url, flush=True)
-    print('[echo_by_monitor] payload:', payload, flush=True)
-    print('[echo_by_monitor] headers:', headers, flush=True)
-    response = requests.post(url, json=payload, headers=headers)
-    print('[echo_by_monitor] response:', response, flush=True)
-    await interaction.response.send_message(f'echo_by_monitor: {response}', ephemeral = True)
+    logging.debug('url: %s', url)
+    logging.debug('payload: %s', payload)
+    logging.debug('headers: %s', headers)
+    response = requests.post(url, json=payload, headers=headers, timeout=5)
+    logging.debug('response: %s', response)
+    await interaction.response.send_message(f'echo_by_monitor: {response}', ephemeral=True)
 
 @client.tree.command()
 async def slash_ping(interaction: discord.interactions.Interaction, arg: str = ''):
-    print(f'[slash_ping] ping {arg}', flush=True)
-    print(type(interaction), flush=True)
-    print(f'interaction.guild_id: {interaction.guild_id}', flush=True)
-    print(f'interaction.channel_id: {interaction.channel_id}', flush=True)
+    """test slash ping pong"""
+    logging.debug('slash_ping %s', arg)
     await interaction.response.send_message(f'pong {arg}', ephemeral = True)
 
 @client.tree.command()
 async def gen_report_by_csv(interaction, zip_file: discord.Attachment = None):
+    """send zip file containing csv to generate report"""
     if zip_file:
-        print('[gen_report_by_csv] zip_file:', zip_file, flush=True)
+        logging.debug('received file: %s', zip_file)
         await interaction.response.send_message('attachment received')
     else:
-        print('[gen_report_by_csv] no file', flush=True)
+        logging.debug('no file received')
         await interaction.response.send_message('no file, try again')
 
 # @client.tree.command()
@@ -117,29 +131,37 @@ async def gen_report_by_csv(interaction, zip_file: discord.Attachment = None):
 
 @client.tree.command()
 async def register_cloud_run(interaction, region: str = '', project_id: str = '', service_name: str = ''):
-    print(f'[register_cloud_run] region: {region}, project_id: {project_id}, service_name: {service_name}', flush=True)
+    """register cloud run service in this channel"""
+    logging.debug('region: %s', region)
+    logging.debug('project_id: %s', project_id)
+    logging.debug('service_name: %s', service_name)
     await interaction.response.send_message('logout success', ephemeral = True)
 
 @client.tree.command()
 async def unregister_cloud_run(interaction, region: str = '', project_id: str = '', service_name: str = ''):
-    print(f'[unregister_cloud_run] region: {region}, project_id: {project_id}, service_name: {service_name}', flush=True)
+    """unregister cloud run service in this channel"""
+    logging.debug('region: %s', region)
+    logging.debug('project_id: %s', project_id)
+    logging.debug('service_name: %s', service_name)
     await interaction.response.send_message('unregister_cloud_run', ephemeral = True)
 
 @client.tree.command()
 async def list_cloud_run(interaction):
+    """list all cloud run services in this channel"""
     print('[list_cloud_run]', flush=True)
     await interaction.response.send_message('list_cloud_run', ephemeral = True)
 
 # --- start ---
 
 def main():
+    """main"""
     loop = asyncio.new_event_loop()
     asyncio.set_event_loop(loop)
 
     # - websockets -
 
     print(f'running websockets on port {WEBSOCKET_PORT}', flush=True)
-    server = websockets.serve(response, '', WEBSOCKET_PORT)
+    server = websockets.serve(websocket_handler, '', WEBSOCKET_PORT)
     loop.run_until_complete(server)
 
     # - discord -
