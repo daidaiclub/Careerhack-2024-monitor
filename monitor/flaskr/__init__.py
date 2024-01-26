@@ -54,7 +54,7 @@ def create_app(test_config=None) -> Flask:
     # flask route
     @app.route('/hello')
     def hello():
-        return 'Hello, World!!'
+        return 'Hello, World!'
 
     @app.route('/hello/<name>')
     def hello_name(name):
@@ -64,6 +64,9 @@ def create_app(test_config=None) -> Flask:
     def dcbot_send():
         nonlocal ws
         data = request.get_json()
+        print(data, flush=True)
+        if not isinstance(data, dict):
+            return jsonify({'message': 'invalid json'}), 400
         if 'message' not in data:
             return jsonify({'message': 'message is required'}), 400
 

@@ -8,6 +8,8 @@ services:
       - "dcbot/.env"
     networks:
       - tsmc-network
+    volumes:
+      - ./dcbot:/app
   tsmc-monitor:
     image: tsmc-monitor
     ports:
@@ -16,8 +18,8 @@ services:
       - "monitor/.env"
     networks:
       - tsmc-network
-    depends_on:
-      - tsmc-dcbot
+    volumes:
+      - ./monitor:/app
 
 
 networks:
