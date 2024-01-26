@@ -2,9 +2,7 @@ from weasyprint import HTML
 from io import BytesIO
 from flask import Flask, request, jsonify, send_file
 import os
-import websocket
 import dotenv
-import threading
 import asyncio
 import datetime
 import zipfile
@@ -14,9 +12,9 @@ import json
 
 from flaskr import dcbot
 from flaskr.db import init_db
+from flaskr.dcbot_websocket import DCBotWebSocket
 
 dotenv.load_dotenv()
-DCBOT_SOCKET_URI = os.getenv('DCBOT_SOCKET_URI')
 
 init_db()
 
@@ -29,37 +27,7 @@ def create_app(test_config=None) -> Flask:
     app = Flask(__name__)
 
     # websocket
-    def connect_dcbot():
-        print(f'connecting dcbot to {DCBOT_SOCKET_URI}', flush=True)
-        connected_event = asyncio.Event()
-
-        def on_open(ws):
-            print("dcbot opened", flush=True)
-            connected_event.set()
-
-        def on_message(ws, message):
-            print(f"dcbot received: {message}", flush=True)
-
-        def on_error(ws, error):
-            print(f'error: {error}', flush=True)
-
-        def on_close(ws, close_status_code, close_msg):
-            print("dcbot closed", flush=True)
-
-        ws = websocket.WebSocketApp(
-            DCBOT_SOCKET_URI,
-            on_message = on_message,
-            on_error = on_error,
-            on_open = on_open,
-            on_close = on_close
-        )
-        wst = threading.Thread(target=ws.run_forever)
-        wst.daemon = True
-        wst.start()
-        return ws
-
     # websocket.enableTrace(True)
-    ws = connect_dcbot()
 
     # flask route
     @app.route('/hello')
@@ -68,7 +36,6 @@ def create_app(test_config=None) -> Flask:
 
     @app.route('/dcbot/message', methods=['POST'])
     def dcbot_send():
-        nonlocal ws
         data = request.get_json()
         print(data, flush=True)
         if not isinstance(data, dict):
@@ -88,18 +55,9 @@ def create_app(test_config=None) -> Flask:
         if 'reply_to' in data:
             ws_message['reply_to'] = data['reply_to']
 
-        try:
-            ws.send(json.dumps(ws_message))
-        except Exception as e:
-            print(f'error: {e}', flush=True)
-            print('reconnecting dcbot', flush=True)
-            try:
-                ws = connect_dcbot()
-                ws.send(json.dumps(ws_message))
-            except Exception as e:
-                print(e, flush=True)
-                return jsonify({'message': 'cannot send message'}), 500
-
+        result = DCBotWebSocket.send(json.dumps(ws_message))
+        if not result:
+            return jsonify({'message': 'cannot send message'}), 500
         return jsonify({'message': 'ok'}), 200
     
     @app.route('/gen', methods=['POST'])
