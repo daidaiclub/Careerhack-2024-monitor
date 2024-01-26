@@ -8,7 +8,7 @@ import pandas as pd
 
 from flaskr.genAI.llm import LLM
 from flaskr.db import get_db
-from flaskr.genAI.cloud import CloudRun, CloudRunPerformanceMonitor, UntilNowTimeRange, SpecificTimeRange
+from flaskr.genAI.cloud import CloudRun, CloudRunPerformanceMonitor, UntilNowTimeRange, SpecificTimeRange, CloudRunResourceManager
 
 # 檢查指標是否異常
 class MetrixUtil:
@@ -156,8 +156,8 @@ def query(cr: CloudRun):
     crpm = CloudRunPerformanceMonitor(cr)
     result = polling_metric(crpm)
 
-    metrcis = [item.to_dict() for item in result.iloc]
-    if MetrixUtil.check_metrics_abnormalities(metrcis):
+    metrics = [item.to_dict() for item in result.iloc]
+    if MetrixUtil.check_metrics_abnormalities(metrics):
         # 獲取該 metrixs 的 第一筆資料 和 最後一筆資料 的時間
         start_time, end_time = result.index[0], result.index[-1]
         time_range = SpecificTimeRange(start_time, end_time)
@@ -171,6 +171,22 @@ def query(cr: CloudRun):
 
         # todo: send to discord by websocket
         print(text)
+
+    cpu_util = metrics[-1].get('Container CPU Utilization (%)', 0)
+    mem_util = metrics[-1].get('Container Memory Utilization (%)', 0)
+
+    crm = CloudRunResourceManager(cr)
+
+    if cpu_util > 50:
+        crm.cpu.scale_up()
+    elif cpu_util < 30:
+        crm.cpu.scale_down()
+
+    if mem_util > 50:
+        crm.memory.scale_up()
+    elif mem_util < 30:
+        crm.memory.scale_down()
+
 
 def genai(temp_dir: str):
     data_frames = []
@@ -189,6 +205,17 @@ def genai(temp_dir: str):
             mdpdf += f'## 異常時間: {merged_data.index[i]}\n'
             mdpdf += LLM.AnalysisError.gen(data=f'指標：{metrics}')
             mdpdf += '\n'
+
+            cpu_util = metrics[-1].get('Container CPU Utilization (%)', 0)
+            mem_util = metrics[-1].get('Container Memory Utilization (%)', 0)
+
+            if cpu_util > 50 or cpu_util < 30:
+                mdpdf += '### CPU 自動調整操作\n'
+                mdpdf += f'CPU 建議**{"增加" if cpu_util > 50 else "減少"}**資源˙\n'
+
+            if mem_util > 50 or mem_util < 30:
+                mdpdf += '### Memory 自動調整操作\n'
+                mdpdf += f'Memory 建議**{"增加" if mem_util > 50 else "減少"}**資源\n'
 
     return mdpdf
 
