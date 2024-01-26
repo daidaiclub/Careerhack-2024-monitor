@@ -25,6 +25,7 @@ async def response(websocket, path):
         if not discord_channel:
             print('[ws server] getting discord channel:', DISCORD_CHANNEL_ID)
             discord_channel = client.get_channel(DISCORD_CHANNEL_ID)
+        
         if not discord_channel:
             print("[ws server] [ERROR] can't access channel:", DISCORD_CHANNEL_ID)
         else:

@@ -58,4 +58,6 @@ pandas==2.2.0
 pytest==7.4.4
 pyarrow==15.0.0
 coverage==7.4.0
+pytest-asyncio==0.23.3
+
 yarl==1.9.4
