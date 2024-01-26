@@ -231,7 +231,7 @@ class CloudRunPerformanceMonitor:
 
         return query
 
-    def _process_pd_dataframe(self, df: pd.DataFrame, metric_label: str):
+    def _process_pd_dataframe(self, df: pd.DataFrame, options: dict=None):
         '''
         Processes the Pandas dataframe.
 
@@ -242,69 +242,75 @@ class CloudRunPerformanceMonitor:
         Returns:
             The processed dataframe.
         '''
+        metric_label = options.get('metric_label', None)
+        metric_new_label = options.get('metric_new_label', None)
+        multiply = options.get('multiply', 1)
+
         if not metric_label is None:
+            if metric_new_label is None:
+              metric_new_label = metric_label
             try:
                 values = df.columns.get_level_values(metric_label).values
-                df.columns = [f'{metric_label} ({i})' for i in values]
+                df.columns = [f'{metric_new_label} ({i})' for i in values]
             except:
                 if not df.empty:
-                    df.columns = [f'{metric_label}']
+                    df.columns = [f'{metric_new_label}']
+
+        df = df * multiply
 
         df.index = df.index.map(lambda x: x.strftime('%Y-%m-%d %H:%M:00'))
         return df
 
-    def get_scalar_metric(
-        self, metric_type: str, time_range: TimeRange, metric_label: str
-    ):
-        '''
-        Retrieves the metric data from the Cloud Monitoring API.
+    def get_scalar_query(
+            self, query: Query
+        ) -> Query:
+            """
+            Returns a modified query object with alignment and reduction applied.
+
+            Args:
+                query (Query): The original query object.
+
+            Returns:
+                Query: The modified query object.
+            """
+            query = query.align(
+                monitoring_v3.Aggregation.Aligner.ALIGN_MEAN, seconds=10)
+            
+            query = query.reduce(
+                monitoring_v3.Aggregation.Reducer.REDUCE_SUM,
+                'metric.label.state',
+                'metric.label.response_code_class',
+            )
+            return query
+
+    def get_distrbution_query(
+        self, query: Query
+    ) -> Query:
+        """
+        Returns a modified query object with alignment and reduction applied.
 
         Args:
-          metric_type (str): The metric type to be retrieved.
-          hours (int): The number of hours to be retrieved.
+            query (Query): The original query object.
 
         Returns:
-          The metric data.
-        '''
-        query = self._get_metric_query(metric_type, time_range)
-        query = query.align(
-            monitoring_v3.Aggregation.Aligner.ALIGN_MEAN, seconds=10)
-        
-        query = query.reduce(
-            monitoring_v3.Aggregation.Reducer.REDUCE_SUM,
-            'metric.label.response_code_class',
-        )
-        df = query.as_dataframe()
-
-        return self._process_pd_dataframe(df, metric_label)
-
-    def get_distrbution_metric(
-        self, metric_type: str, time_range: TimeRange, metric_label: str
-    ):
-        '''
-        Retrieves the metric data from the Cloud Monitoring API.
-
-        Args:
-          metric_type (str): The metric type to be retrieved.
-          hours (int): The number of hours to be retrieved.
-
-        Returns:
-          The metric data.
-        '''
-        query = self._get_metric_query(metric_type, time_range)
+            Query: The modified query object with alignment and reduction applied.
+        """
         query = query.align(
             monitoring_v3.Aggregation.Aligner.ALIGN_PERCENTILE_50, seconds=10
         )
         query = query.reduce(monitoring_v3.Aggregation.Reducer.REDUCE_MEAN)
-        df = query.as_dataframe()
+        return query
 
-        return self._process_pd_dataframe(df, metric_label)
+    def get_metric(self, metric_type: str, time_range: TimeRange, options: dict=None):
+        query = self._get_metric_query(metric_type, time_range)
 
-    def get_metric(self, metric_type: str, time_range: TimeRange, metric_label: str):
         if metric_type in self.scalar_type:
-            return self.get_scalar_metric(metric_type, time_range, metric_label)
+            query = self.get_scalar_query(query)
         elif metric_type in self.distribution_type:
-            return self.get_distrbution_metric(metric_type, time_range, metric_label)
+            query = self.get_distrbution_query(query)
+
+        df = query.as_dataframe()
+        return self._process_pd_dataframe(df, options)
 
     def get_logs(self, time_range: TimeRange):
         '''
@@ -346,22 +352,25 @@ if __name__ == '__main__':
     crpm = CloudRunPerformanceMonitor(cr)
     time_range = UntilNowTimeRange(minutes=35)
 
-    metries_datas = []
-    metries_types_and_name = [
-        ('run.googleapis.com/request_count', 'response_code_class'),
-        ('run.googleapis.com/request_latencies', 'latency'),
-        ('run.googleapis.com/container/instance_count', 'instance_count'),
-        ('run.googleapis.com/container/cpu/utilizations', 'cpu_utilization'),
-        ('run.googleapis.com/container/memory/utilizations', 'memory_utilization'),
-        ('run.googleapis.com/container/startup_latencies', 'startup_latency')
-    ]
+    tmp = crpm.get_metric('run.googleapis.com/container/instance_count', time_range, 'state', 'Instance Count')
+    print(tmp)
 
-    for metric_type, metric_label in metries_types_and_name:
-        metries_datas.append(
-            crpm.get_metric(metric_type, time_range, metric_label)
-        )
+    # metries_datas = []
+    # metries_types_and_name = [
+    #     ('run.googleapis.com/request_count', 'response_code_class'),
+    #     ('run.googleapis.com/request_latencies', 'latency'),
+    #     ('run.googleapis.com/container/instance_count', 'instance_count'),
+    #     ('run.googleapis.com/container/cpu/utilizations', 'cpu_utilization'),
+    #     ('run.googleapis.com/container/memory/utilizations', 'memory_utilization'),
+    #     ('run.googleapis.com/container/startup_latencies', 'startup_latency')
+    # ]
 
-    res = pd.concat(metries_datas, axis=1)
-    ignore_dropna_fields = ['startup_latency']
-    res = res.dropna(subset=[col for col in res.columns if not col in ignore_dropna_fields])
-    print(res)
+    # for metric_type, metric_label in metries_types_and_name:
+    #     metries_datas.append(
+    #         crpm.get_metric(metric_type, time_range, metric_label)
+    #     )
+
+    # res = pd.concat(metries_datas, axis=1)
+    # ignore_dropna_fields = ['startup_latency']
+    # res = res.dropna(subset=[col for col in res.columns if not col in ignore_dropna_fields])
+    # print(res)
