@@ -1,0 +1,8 @@
+version: '3.8'
+services:
+  tsmc-dcbot:
+    image: tsmc-dcbot
+    ports:
+      - "8765:8765"
+    env_file:
+      - "dcbot/.env"
