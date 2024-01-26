@@ -9,6 +9,8 @@ import zipfile
 import shutil
 import markdown
 import json
+import threading
+import logging
 
 import base64
 from flaskr import dcbot
@@ -16,6 +18,16 @@ from flaskr.db import init_db
 from flaskr.dcbot_websocket import DCBotWebSocket
 
 dotenv.load_dotenv()
+
+# --- logger
+
+logger = logging.getLogger(__name__)
+logger.setLevel(level=logging.DEBUG)
+handler = logging.StreamHandler()
+formatter = logging.Formatter('%(asctime)s %(levelname)s [%(funcName)s]: %(message)s')
+handler.setFormatter(formatter)
+logger.addHandler(handler)
+
 
 init_db()
 
@@ -69,22 +81,24 @@ def create_app(test_config=None) -> Flask:
             return jsonify({'message': 'file is required ss'}), 400
         
         file = request.files['file']
+        channel_id = request.form['channel_id']
+        reply_to = request.form['original_response_id']
         if file.filename == '':
             return jsonify({'message': 'file is required'}), 400
         
         if file and file.filename.endswith('.zip'):
-            def ws():
-                now = datetime.datetime.now()
-                temp_dir = f'temp-{now.strftime("%Y-%m-%d-%H-%M-%S")}'
-                os.makedirs(temp_dir)
-                zip_path = os.path.join(temp_dir, file.filename)
-                file.save(zip_path)
-                # unzip
-                with zipfile.ZipFile(zip_path, 'r') as zip_ref:
-                    zip_ref.extractall(temp_dir)
-                # remove zip
-                os.remove(zip_path)
-
+            now = datetime.datetime.now()
+            temp_dir = f'temp-{now.strftime("%Y-%m-%d-%H-%M-%S")}'
+            os.makedirs(temp_dir)
+            zip_path = os.path.join(temp_dir, file.filename)
+            logger.debug(f'zip_path: {zip_path}')
+            file.save(zip_path)
+            # unzip
+            with zipfile.ZipFile(zip_path, 'r') as zip_ref:
+                zip_ref.extractall(temp_dir)
+            # remove zip
+            os.remove(zip_path)
+            def ws(temp_dir, channel_id, reply_to):
                 # gen AI report
                 mdpdf = dcbot.genai(temp_dir)
                 shutil.rmtree(temp_dir)
@@ -94,12 +108,12 @@ def create_app(test_config=None) -> Flask:
                 buffer = BytesIO(pdf)
                 b64file = base64.b64encode(buffer.getvalue())
                 ws_message = {
-                    'channel_id': request.form['channel_id'],
-                    'file_base64': b64file,
-                    'reply_to': request.form['reply_to']
+                    'channel_id': channel_id,
+                    'file_base64': b64file.decode(),
+                    'reply_to': reply_to,
                 } 
                 DCBotWebSocket.send(json.dumps(ws_message))
-            th = threading.Thread(target=ws)
+            th = threading.Thread(target=ws, args=(temp_dir, channel_id, reply_to))
             th.daemon = True
             th.start()
             return jsonify({'message': 'ok'}), 200

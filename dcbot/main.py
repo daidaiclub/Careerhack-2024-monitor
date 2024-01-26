@@ -215,15 +215,19 @@ async def gen_report_by_csv(interaction: discord.interactions.Interaction, zip_f
 
 @client.tree.command()
 async def register_cloud_run(
-        interaction,
+        interaction: discord.interactions.Interaction,
         region: str = '',
         project_id: str = '',
         service_name: str = ''):
     """register cloud run service in this channel"""
+    guild_id = interaction.guild.id
+    channel_id = interaction.channel.id
     logger.debug('region: %s', region)
     logger.debug('project_id: %s', project_id)
     logger.debug('service_name: %s', service_name)
-    await interaction.response.send_message('logout success', ephemeral=True)
+    url = f'{MONITOR_URL}/dcbot/guilds/{guild_id}/channels/{channel_id}/cloud_run_services/{region}/{project_id}/{service_name}'
+    requests.post(url, timeout=10)
+    await interaction.response.send_message('register success')
 
 
 @client.tree.command()
@@ -233,17 +237,32 @@ async def unregister_cloud_run(
         project_id: str = '',
         service_name: str = ''):
     """unregister cloud run service in this channel"""
+    guild_id = interaction.guild.id
+    channel_id = interaction.channel.id
     logger.debug('region: %s', region)
     logger.debug('project_id: %s', project_id)
     logger.debug('service_name: %s', service_name)
-    await interaction.response.send_message('unregister_cloud_run', ephemeral=True)
+    url = f'{MONITOR_URL}/dcbot/guilds/{guild_id}/channels/{channel_id}/cloud_run_services/{region}/{project_id}/{service_name}'
+    requests.delete(url, timeout=10)
+    await interaction.response.send_message('unregister success')
 
 
 @client.tree.command()
 async def list_cloud_run(interaction):
     """list all cloud run services in this channel"""
-    print('[list_cloud_run]', flush=True)
-    await interaction.response.send_message('list_cloud_run', ephemeral=True)
+    guild_id = interaction.guild.id
+    channel_id = interaction.channel.id
+    url = f'{MONITOR_URL}/dcbot/guilds/{guild_id}/channels/{channel_id}/cloud_run_services'
+    response = requests.get(url, timeout=10)
+    cloud_run_services = response.json()
+    logger.debug('type(cloud_run_services): %s', type(cloud_run_services))
+    logger.debug('cloud_run_services: %s', cloud_run_services)
+    response_message = 'cloud run services:\n'
+    for cloud_run_service in cloud_run_services:
+        response_message += f'- service name: **{cloud_run_service['service_name']}**\n'
+        response_message += f'  - project id: **{cloud_run_service['project_id']}**\n'
+        response_message += f'  - region: **{cloud_run_service['region']}**\n'
+    await interaction.response.send_message(response_message)
 
 # --- start ---
 
