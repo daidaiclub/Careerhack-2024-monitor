@@ -12,6 +12,8 @@ import shutil
 import markdown
 import json
 
+import base64
+from flaskr import DCBotWebSocket
 from flaskr import dcbot
 from flaskr.db import init_db
 
@@ -113,26 +115,37 @@ def create_app(test_config=None) -> Flask:
             return jsonify({'message': 'file is required'}), 400
         
         if file and file.filename.endswith('.zip'):
-            now = datetime.datetime.now()
-            temp_dir = f'temp-{now.strftime("%Y-%m-%d-%H-%M-%S")}'
-            os.makedirs(temp_dir)
-            zip_path = os.path.join(temp_dir, file.filename)
-            file.save(zip_path)
-            # unzip
-            with zipfile.ZipFile(zip_path, 'r') as zip_ref:
-                zip_ref.extractall(temp_dir)
-            # remove zip
-            os.remove(zip_path)
+            def ws():
+                now = datetime.datetime.now()
+                temp_dir = f'temp-{now.strftime("%Y-%m-%d-%H-%M-%S")}'
+                os.makedirs(temp_dir)
+                zip_path = os.path.join(temp_dir, file.filename)
+                file.save(zip_path)
+                # unzip
+                with zipfile.ZipFile(zip_path, 'r') as zip_ref:
+                    zip_ref.extractall(temp_dir)
+                # remove zip
+                os.remove(zip_path)
 
-            # gen AI report
-            mdpdf = dcbot.genai(temp_dir)
-            shutil.rmtree(temp_dir)
-            html = markdown.markdown(mdpdf)
-            pdf = HTML(string=html).write_pdf()
-            buffer = BytesIO(pdf)
+                # gen AI report
+                mdpdf = dcbot.genai(temp_dir)
+                shutil.rmtree(temp_dir)
+                html = markdown.markdown(mdpdf)
+                pdf = HTML(string=html).write_pdf()
+                
+                buffer = BytesIO(pdf)
+                b64file = base64.b64encode(buffer.getvalue())
+                ws_message = {
+                    'channel_id': request.form['channel_id'],
+                    'file_base64': b64file,
+                    'reply_to': request.form['reply_to']
+                } 
+                DCBotWebSocket.send(json.dumps(ws_message))
+            th = threading.Thread(target=ws)
+            th.daemon = True
+            th.start()
+            return jsonify({'message': 'ok'}), 200
 
-            return send_file(buffer, as_attachment=True, download_name="output.pdf", mimetype='application/pdf')
-        
         return jsonify({'message': 'invalid file'}), 400
     
     @app.route('/dcbot/guilds/<guild_id>/channels/<channel_id>/cloud_run_services/<region>/<project_id>/<service_name>', methods=['POST'])
