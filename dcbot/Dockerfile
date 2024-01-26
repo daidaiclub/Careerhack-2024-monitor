@@ -10,7 +10,7 @@ RUN apt-get update \
         libc-dev \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/* \
-    && pip install -r requirements.txt \
+    && pip install --no-cache-dir -r requirements.txt \
     && apt-get autoremove -y \
         gcc \
         libc-dev
