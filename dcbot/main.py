@@ -29,6 +29,7 @@ discord_channel = None
 
 # --- websockets
 
+
 async def websocket_handler(websocket, path):
     """handle websocket messages"""
     global discord_channel
@@ -37,19 +38,22 @@ async def websocket_handler(websocket, path):
         logging.debug("received message:\n%s", message)
 
         if not discord_channel:
-            logging.error("can't access channel: %s, retrying...", DISCORD_CHANNEL_ID)
+            logging.error("can't access channel: %s, retrying...",
+                          DISCORD_CHANNEL_ID)
             discord_channel = client.get_channel(DISCORD_CHANNEL_ID)
 
         if not discord_channel:
             logging.error("can't access channel: %s", DISCORD_CHANNEL_ID)
         else:
             await discord_channel.send(message)
-            logging.debug("sent message to discord channel: %s", DISCORD_CHANNEL_ID)
+            logging.debug("sent message to discord channel: %s",
+                          DISCORD_CHANNEL_ID)
 
 # --- discord
 
 intents = discord.Intents.all()
 client = commands.Bot(command_prefix='!', intents=intents)
+
 
 @client.event
 async def on_ready():
@@ -80,11 +84,13 @@ async def on_message(message):
     logging.debug("received user message:\n%s", message)
     await client.process_commands(message)
 
+
 @client.command()
 async def ping(ctx, arg=''):
     """test ping pong"""
     logging.debug('ping %s', arg)
     await ctx.send(f'pong {arg}')
+
 
 @client.tree.command()
 async def echo_by_monitor(interaction):
@@ -103,11 +109,13 @@ async def echo_by_monitor(interaction):
     logging.debug('response: %s', response)
     await interaction.response.send_message(f'echo_by_monitor: {response}', ephemeral=True)
 
+
 @client.tree.command()
 async def slash_ping(interaction: discord.interactions.Interaction, arg: str = ''):
     """test slash ping pong"""
     logging.debug('slash_ping %s', arg)
-    await interaction.response.send_message(f'pong {arg}', ephemeral = True)
+    await interaction.response.send_message(f'pong {arg}', ephemeral=True)
+
 
 @client.tree.command()
 async def gen_report_by_csv(interaction, zip_file: discord.Attachment = None):
@@ -129,29 +137,41 @@ async def gen_report_by_csv(interaction, zip_file: discord.Attachment = None):
 #     print('[logout_gcp]', flush=True)
 #     await interaction.response.send_message('logout success', ephemeral = True)
 
+
 @client.tree.command()
-async def register_cloud_run(interaction, region: str = '', project_id: str = '', service_name: str = ''):
+async def register_cloud_run(
+        interaction,
+        region: str = '',
+        project_id: str = '',
+        service_name: str = ''):
     """register cloud run service in this channel"""
     logging.debug('region: %s', region)
     logging.debug('project_id: %s', project_id)
     logging.debug('service_name: %s', service_name)
-    await interaction.response.send_message('logout success', ephemeral = True)
+    await interaction.response.send_message('logout success', ephemeral=True)
+
 
 @client.tree.command()
-async def unregister_cloud_run(interaction, region: str = '', project_id: str = '', service_name: str = ''):
+async def unregister_cloud_run(
+        interaction,
+        region: str = '',
+        project_id: str = '',
+        service_name: str = ''):
     """unregister cloud run service in this channel"""
     logging.debug('region: %s', region)
     logging.debug('project_id: %s', project_id)
     logging.debug('service_name: %s', service_name)
-    await interaction.response.send_message('unregister_cloud_run', ephemeral = True)
+    await interaction.response.send_message('unregister_cloud_run', ephemeral=True)
+
 
 @client.tree.command()
 async def list_cloud_run(interaction):
     """list all cloud run services in this channel"""
     print('[list_cloud_run]', flush=True)
-    await interaction.response.send_message('list_cloud_run', ephemeral = True)
+    await interaction.response.send_message('list_cloud_run', ephemeral=True)
 
 # --- start ---
+
 
 def main():
     """main"""
@@ -169,6 +189,7 @@ def main():
     print('running discord', flush=True)
     loop.run_until_complete(client.start(DISCORD_TOKEN))
     loop.run_forever()
+
 
 if __name__ == '__main__':
     main()
