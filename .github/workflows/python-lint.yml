@@ -17,5 +17,5 @@ jobs:
         pip install pylint
     - name: Run Pylint
       run: |
-        pylint dcbot/ || True
+        pylint dcbot/ || true
         pylint monitor/
