@@ -1,13 +1,15 @@
 # Path: genAI/main.py
 
-from .llm import LLM
+from concurrent.futures import ThreadPoolExecutor, as_completed
+from llm import LLM
 import pandas as pd
 from functools import reduce
 import os
 import time
+from functools import wraps
+import threading
 
-from cloud import CloudRun, CloudRunResourceManager, CloudRunPerformanceMonitor, UntilNowTimeRange
-
+from cloud import CloudRun, CloudRunResourceManager, CloudRunPerformanceMonitor, UntilNowTimeRange, SpecificTimeRange
 
 def simulate_realtime_csv() -> pd.DataFrame:
     csv_dir = os.path.join(os.path.dirname(__file__),
@@ -32,77 +34,169 @@ def simulate_realtime_csv() -> pd.DataFrame:
         request_latency,
     ]
 
-    # data_frames = list(map(lambda df: df.assign(Time=pd.to_datetime(df['Time'])), data_frames))
-
+    data_frames = list(map(lambda df: df.assign(Time=pd.to_datetime(df['Time'])), data_frames))
     merged_data = reduce(lambda left, right: pd.merge(
         left, right, on=['Time'], how='outer'), data_frames)
-    # merged_data = merged_data.set_index('Time')
+    merged_data = merged_data.set_index('Time')
 
-    for _, row in merged_data.iterrows():
-        yield row
-        time.sleep(0.02)
+    return merged_data
 
-# {'Container CPU Utilization (%)': 16.0875, 'Container Memory Utilization (%)': 56.99, 'Container Startup Latency (ms)': nan, 'Instance Count (active)': 1.0, 'Instance Count (idle)': 1.0, 'Request Count (1xx)': 0.0, 'Request Count (2xx)': 5.0, 'Request Count (3xx)': 0.0, 'Request Count (4xx)': 4.0, 'Request Latency (ms)': 31.2701591}
 # 檢查指標是否異常
+class MetrixUtil:
 
+    @staticmethod
+    def check_metrics_abnormalities(metrics: list):
+        metric = metrics[-1]
 
-def check_metrics_abnormalities(metrics: dict, times_dict: dict = {'cpu': 0, 'memory': 0}):
-    if metrics['Container Startup Latency (ms)'] > 0:
-        return True
+        if metric['Container Startup Latency (ms)'] > 0:
+            return True
 
-    if metrics['Instance Count (active)'] > 2:
-        return True
+        if metric['Instance Count (active)'] > 4:
+            return True
 
-    if metrics['Request Count (4xx)'] > 5:
-        return True
+        if metric['Request Count (4xx)'] > 5:
+            return True
+        
+        if metric['Request Count (5xx)'] > 5:
+            return True
 
-    cpu_abnormal = metrics['Container CPU Utilization (%)'] > 60
-    memory_abnormal = metrics['Container Memory Utilization (%)'] > 80
+        times_dict = {'cpu': 0, 'memory': 0}
 
-    if cpu_abnormal:
-        times_dict['cpu'] += 1
-    else:
-        times_dict['cpu'] = 0
+        if len(metrics) >= 2:
+            for metric in metrics[-2:]:
+                cpu_abnormal = metric['Container CPU Utilization (%)'] > 60
+                memory_abnormal = metric['Container Memory Utilization (%)'] > 80
 
-    if memory_abnormal:
-        times_dict['memory'] += 1
-    else:
-        times_dict['memory'] = 0
+                if cpu_abnormal:
+                    times_dict['cpu'] += 1
+                else:
+                    times_dict['cpu'] = 0
 
-    return times_dict['cpu'] >= 2 or times_dict['memory'] >= 2
+                if memory_abnormal:
+                    times_dict['memory'] += 1
+                else:
+                    times_dict['memory'] = 0
 
+        return times_dict['cpu'] >= 2 or times_dict['memory'] >= 2
+
+def get_metric_wrapper(crpm: CloudRunPerformanceMonitor, metric_type: str, until_now, options: dict):
+    return crpm.get_metric(metric_type, until_now, options=options)
 
 def polling_metric(crpm: CloudRunPerformanceMonitor):
-    until_now = UntilNowTimeRange(minutes=5)
+    until_now = UntilNowTimeRange(minutes=8)
     metries_datas = []
+
     metries_types_and_name = [
-        ('run.googleapis.com/request_count', 'response_code_class'),
-        ('run.googleapis.com/request_latencies', 'latency'),
-        ('run.googleapis.com/container/instance_count', 'instance_count'),
-        ('run.googleapis.com/container/cpu/utilizations', 'cpu_utilization'),
-        ('run.googleapis.com/container/memory/utilizations', 'memory_utilization'),
-        ('run.googleapis.com/container/startup_latencies', 'startup_latency')
+        {
+            'metric_type': 'run.googleapis.com/request_count',
+            'options': {
+                'metric_label': 'response_code_class',
+                'metric_new_label': 'Request Count'
+            }
+        },
+        {
+            'metric_type': 'run.googleapis.com/request_latencies',
+            'options': {
+                'metric_label': 'Container Startup Latency (ms)',
+            }
+        },
+        {
+            'metric_type': 'run.googleapis.com/container/instance_count',
+            'options': {
+                'metric_label': 'state',
+                'metric_new_label': 'Instance Count'
+            }
+        },
+        {
+            'metric_type': 'run.googleapis.com/container/cpu/utilizations',
+            'options': {
+                'metric_label': 'Container CPU Utilization (%)',
+                'multiply': 100
+            }
+        },
+        {
+            'metric_type': 'run.googleapis.com/container/memory/utilizations',
+            'options': {
+                'metric_label': 'Container Memory Utilization (%)',
+                'multiply': 100
+            }
+        },
+        {
+            'metric_type': 'run.googleapis.com/container/startup_latencies',
+            'options': {
+                'metric_label': 'Container Startup Latency (ms)',
+            }
+        }
     ]
 
-    for metric_type, metric_label in metries_types_and_name:
-        metries_datas.append(
-            crpm.get_metric(metric_type, until_now, metric_label)
-        )
+    with ThreadPoolExecutor(max_workers=len(metries_types_and_name)) as executor:
+        future_to_metric = {
+            executor.submit(get_metric_wrapper,
+                            crpm,
+                            mt['metric_type'],
+                            until_now,
+                            options=mt['options']
+                            ): mt for mt in metries_types_and_name}
+
+        metries_datas = []
+        for future in as_completed(future_to_metric):
+            metries_datas.append(future.result())
 
     res = pd.concat(metries_datas, axis=1)
     ignore_dropna_fields = ['startup_latency']
     res = res.dropna(
         subset=[col for col in res.columns if not col in ignore_dropna_fields])
+    res = res[sorted(res.columns)]
 
     return res
 
-
 if __name__ == '__main__':
-    cr = CloudRun(region='us-central1',
-                  project_id='tsmccareerhack2024-icsd-grp3',
-                  service_name='sso-tsmc-2')
-    crpm = CloudRunPerformanceMonitor(cr)
 
-    result = polling_metric(crpm)
-    print(result)
-    pass
+    def main():
+        cr = CloudRun(region='us-central1',
+                    project_id='tsmccareerhack2024-icsd-grp3',
+                    service_name='sso-tsmc-2')
+        crpm = CloudRunPerformanceMonitor(cr)
+        result = polling_metric(crpm)
+
+        # 如果最後兩筆的指標有異常的話，就會丟到 llm 讓他生成的錯誤報告
+        # if MetrixUtil.check_metrics_abnormalities(result.iloc[-1].to_dict()):
+        #     # 獲取該 metrixs 的 第一筆資料 和 最後一筆資料 的時間
+        #     start_time, end_time = result.index[0], result.index[-1]
+        #     time_range = SpecificTimeRange(start_time, end_time)
+        #     logs = crpm.get_logs(time_range)
+
+        #     if logs is []:
+        #         logs = '沒有 log'
+
+        #     text = LLM.AnalysisError.gen(data=f'指標：\b{result.to_dict()}\n錯誤訊息:\n{logs}')
+        #     print(text)
+
+        # handel auto scaling cloud run resource
+        crm = CloudRunResourceManager(cr)
+        resource_data = result.iloc[-1].to_dict()
+        if resource_data['Container CPU Utilization (%)'] > 50:
+            crm.cpu.scale_up()
+        elif resource_data['Container CPU Utilization (%)'] < 30:
+            crm.cpu.scale_down()
+
+        if resource_data['Container Memory Utilization (%)'] > 50:
+            crm.memory.scale_up()
+        elif resource_data['Container Memory Utilization (%)'] < 30:
+            crm.memory.scale_down()
+
+    main()
+    main()
+    main()
+    # interval_seconds = 30
+
+    # def run_timer():
+    #     while True:
+    #         timer = threading.Timer(interval_seconds, main)
+    #         timer.start()
+    #         timer.join()
+
+    # timer_thread = threading.Thread(target=run_timer)
+    # timer_thread.daemon = True
+    # timer_thread.start()
+    # timer_thread.join()
