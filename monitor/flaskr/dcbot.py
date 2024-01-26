@@ -1,7 +1,6 @@
-from genAi import MetrixUtil
 import pandas as pd
 import os
-from genAI.llm import LLM
+from flaskr.genAI.llm import LLM
 from functools import reduce
 # 檢查指標是否異常
 class MetrixUtil:

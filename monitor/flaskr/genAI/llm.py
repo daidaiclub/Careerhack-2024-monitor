@@ -1,5 +1,9 @@
 from vertexai.preview.language_models import TextGenerationModel
+import vertexai
 
+vertexai.init(
+    project='tsmccareerhack2024-icsd-grp3',
+)
 def get_parameters():
     return {
         "temperature": 0.3,
