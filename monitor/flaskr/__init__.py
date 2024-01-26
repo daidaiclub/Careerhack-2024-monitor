@@ -73,7 +73,7 @@ def create_app(test_config=None) -> Flask:
             return jsonify({'message': 'file is required'}), 400
         
         if file and file.filename.endswith('.zip'):
-            def ws():
+            def ws(file):
                 now = datetime.datetime.now()
                 temp_dir = f'temp-{now.strftime("%Y-%m-%d-%H-%M-%S")}'
                 os.makedirs(temp_dir)
@@ -99,7 +99,7 @@ def create_app(test_config=None) -> Flask:
                     'reply_to': request.form['reply_to']
                 } 
                 DCBotWebSocket.send(json.dumps(ws_message))
-            th = threading.Thread(target=ws)
+            th = threading.Thread(target=ws, args=(file))
             th.daemon = True
             th.start()
             return jsonify({'message': 'ok'}), 200

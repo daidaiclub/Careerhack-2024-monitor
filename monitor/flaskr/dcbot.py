@@ -1,4 +1,5 @@
 from functools import reduce
+import json
 from flask import jsonify
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime
@@ -9,6 +10,7 @@ import pandas as pd
 from flaskr.genAI.llm import LLM
 from flaskr.db import get_db
 from flaskr.genAI.cloud import CloudRun, CloudRunPerformanceMonitor, UntilNowTimeRange, SpecificTimeRange, CloudRunResourceManager
+from flaskr.dcbot_websocket import DCBotWebSocket
 
 # 檢查指標是否異常
 class MetrixUtil:
@@ -147,7 +149,7 @@ def is_cloud_run_service_registered(guild_id, channel_id, region, project_id, se
     
     return cursor.fetchone() is not None
 
-def query(cr: CloudRun):
+def query(cr: CloudRun, channel_id):
     lastest_llm_query_time = get_lastest_llm_query_time(cr.region, cr.project_id, cr.service_name)
     query_time = datetime.fromisoformat(lastest_llm_query_time) if lastest_llm_query_time else None
     if not query_time is None and (datetime.now() - query_time).total_seconds() < 600:
@@ -170,7 +172,12 @@ def query(cr: CloudRun):
         set_lastest_llm_query_time(cr.region, cr.project_id, cr.service_name, datetime.now().isoformat())
 
         # todo: send to discord by websocket
-        print(text)
+        ws_message = {
+            'channel_id': channel_id,
+            'message': text
+        }
+        DCBotWebSocket.send(json.dumps(ws_message))
+        # print(text)
 
     cpu_util = metrics[-1].get('Container CPU Utilization (%)', 0)
     mem_util = metrics[-1].get('Container Memory Utilization (%)', 0)
@@ -226,7 +233,7 @@ def register_cloud_run_service(guild_id, channel_id, region, project_id, service
         timer = threading.Timer(30, run_timer, [guild_id, channel_id, cr])
         timer.daemon = True
         timer.start()
-        query(cr)
+        query(cr, channel_id)
     db = get_db()
     cursor = db.cursor()
 
