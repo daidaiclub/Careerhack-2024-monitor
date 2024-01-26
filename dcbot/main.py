@@ -1,90 +1,95 @@
 import os
 import asyncio
 import discord
+from discord.ext import commands
+from discord import app_commands
 import websockets
 import dotenv
 
 dotenv.load_dotenv()
 
+DISCORD_TOKEN = os.getenv('DISCORD_TOKEN')
+DISCORD_CHANNEL_ID = int(os.getenv('DISCORD_CHANNEL_ID'))
+WEBSOCKET_PORT = int(os.getenv('WEBSOCKET_PORT'))
+
+discord_channel = None
+
 # --- websockets ----
 
 async def response(websocket, path):
-    global channel
+    global discord_channel
 
-    while True:
-        try:
-            message = await websocket.recv()
+    async for message in websocket:
+        print(f"[ws server] message  < {message}")
 
-            print(f"[ws server] message  < {message}")
-
-            #answer = f"my answer: [{message}]"
-            #await websocket.send(answer)   # if client expect `response` then server has to send `response`
-            #print(f"[ws server] answer > {answer}")
-
-            if not channel:
-                print('[ws server] getting discord channel:', CHANNEL_ID)
-                channel = client.get_channel(CHANNEL_ID)
-
-            if not channel:
-                print("[ws server] can't access channel:", CHANNEL_ID)
-            else:
-                print('[ws server] channel:', channel, 'message:', message)
-                #await channel.send(f'websockets: {message}')
-                await channel.send(message)
-        except websockets.exceptions.ConnectionClosedOK:
-            print('[ws server] connection closed')
-            break
+        if not discord_channel:
+            print('[ws server] getting discord channel:', DISCORD_CHANNEL_ID)
+            discord_channel = client.get_channel(DISCORD_CHANNEL_ID)
+        if not discord_channel:
+            print("[ws server] [ERROR] can't access channel:", DISCORD_CHANNEL_ID)
+        else:
+            print('[ws server] channel:', discord_channel, 'message:', message)
+            await discord_channel.send(message)
+            print('[ws server] message sent')
 
 # --- discord ---
 
 intents = discord.Intents.all()
-client = discord.Client(intents=intents)
-
-# `get_channel()` has to be used after `client.run()`
-#print(client.get_channel(MY_CHANNEL_ID))  # None
+client = commands.Bot(command_prefix='!', intents=intents)
 
 @client.event
 async def on_ready():
-    global channel
+    global discord_channel
 
-    if not channel:
-        print('[on_ready] getting discord channel:', CHANNEL_ID)
-        channel = client.get_channel(CHANNEL_ID)  # access to channel
+    if not discord_channel:
+        print('[on_ready] getting discord channel:', DISCORD_CHANNEL_ID)
+        discord_channel = client.get_channel(DISCORD_CHANNEL_ID)
 
-    if not channel:
-        print("[on_ready] can't access channel:", CHANNEL_ID)
+    if not discord_channel:
+        print("[on_ready] can't access channel:", DISCORD_CHANNEL_ID)
     else:
-        print('[on_ready] channel:', channel)
+        print('[on_ready] channel:', discord_channel)
+    
+    try:
+        synced = await client.tree.sync()
+        print('[on_ready] synced:', synced)
+    except Exception as e:
+        print('[on_ready] [ERROR] sync failed:', e)
+
+@client.command()
+async def ping(ctx, arg=''):
+    print(f'[ping] ping {arg}')
+    await ctx.send(f'pong {arg}')
+
+@client.tree.command()
+async def slash_ping(interaction):
+    print('[slash_ping] ping')
+    await interaction.response.send_message('pong')
 
 @client.event
 async def on_message(message):
-    if message.author != client.user:
-        print('[on_message] message.content:', message.content)
+    if message.author == client.user:
+        return
+    print('[on_message] message.content:', message.content)
+    await client.process_commands(message)
 
 # --- start ---
 
-loop = asyncio.new_event_loop()
-asyncio.set_event_loop(loop)
+def main():
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
 
-# - websockets -
+    # - websockets -
 
-print('running websockets ws://0.0.0.0:8000')
-server = websockets.serve(
-    response,
-    '0.0.0.0',
-    '8000',
-    ping_interval=10,
-    ping_timeout=5,
-)
-loop.run_until_complete(server)
-# without `run_forever()` because `client.run()` will run `run_forever()`
+    print(f'running websockets on port {WEBSOCKET_PORT}')
+    server = websockets.serve(response, '', WEBSOCKET_PORT)
+    loop.run_until_complete(server)
 
-# - discord -
+    # - discord -
 
-channel = None   # set default value at start
+    print('running discord')
+    loop.run_until_complete(client.start(DISCORD_TOKEN))
+    loop.run_forever()
 
-print('running discord')
-TOKEN = os.getenv('DISCORD_TOKEN')
-CHANNEL_ID = int(os.getenv('DISCORD_CHANNEL_ID'))
-loop.run_until_complete(client.start(TOKEN))
-loop.run_forever()
+if __name__ == '__main__':
+    main()
