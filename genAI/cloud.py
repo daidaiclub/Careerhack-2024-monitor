@@ -7,6 +7,7 @@ from google.cloud.monitoring_v3.query import Query
 
 import os
 import dotenv
+from typing import Tuple
 
 dotenv.load_dotenv()
 
@@ -20,12 +21,12 @@ class TimeRange(ABC):
         pass
 
     @abstractmethod
-    def get_time_range_iso(self) -> (str, str):
+    def get_time_range_iso(self) -> Tuple[str, str]:
         pass
 
 
 class UntilNowTimeRange(TimeRange):
-    def __init__(self, days: int=0, hours: int=0, minutes: int=0) -> None:
+    def __init__(self, days: int = 0, hours: int = 0, minutes: int = 0) -> None:
         self.minutes = days * 24 * 60 + hours * 60 + minutes
         now = datetime.now().replace(second=0, microsecond=0)
         self.start_time = now - timedelta(minutes=self.minutes)
@@ -34,7 +35,7 @@ class UntilNowTimeRange(TimeRange):
     def get_minutes(self) -> int:
         return self.minutes
 
-    def get_time_range_iso(self) -> (str, str):
+    def get_time_range_iso(self) -> Tuple[str, str]:
         return self.start_time.isoformat(), self.end_time.isoformat()
 
 
@@ -46,7 +47,7 @@ class SpecificTimeRange(TimeRange):
     def get_minutes(self) -> int:
         return int((self.end_time - self.start_time).total_seconds()) // 60
 
-    def get_time_range_iso(self) -> (str, str):
+    def get_time_range_iso(self) -> Tuple[str, str]:
         return self.start_time.isoformat(), self.end_time.isoformat()
 
 
@@ -56,99 +57,94 @@ class CloudRun:
         self.project_id = project_id
         self.service_name = service_name
 
-    def get_full_server_name(self):
-        return f'projects/{self.project_id}/locations/{self.egion}/services/{self.service_name}'
+    def get_full_service_name(self):
+        return f'projects/{self.project_id}/locations/{self.region}/services/{self.service_name}'
 
+class CloudRunResource:
+    value: int
+
+    def __init__(self, parent) -> None:
+        self.parent = parent
+
+    def scale_up(self):
+        self.parent.init_resource()
+        origin = self.value
+        try:
+            self.value = self.value * 2
+            self.parent.update_resouce()
+        except:
+            self.value = origin
+
+    def scale_down(self):
+        self.parent.init_resource()
+        origin = self.value
+        try:
+            self.value = self.value // 2
+            self.parent.update_resouce()
+        except:
+            self.value = origin
+    pass
 
 class CloudRunResourceManager:
-  
-  def __init__(self, service_name: str):
-    self.region = os.getenv('REGION', 'us-central1')
-    self.project_id = os.getenv('PROJECT_ID', 'tsmccareerhack2024-icsd-grp3')
-    self.service_name = service_name
-    self.client = run_v2.ServicesClient()
-    
-  def _parse_resource_value(self, value: str):
-    if value[-1] == 'm':
-      return int(value[:-1]) / 1000
-    elif value[-2:] == 'Gi':
-      return int(value[:-2]) * 1024
-    elif value[-2:] == 'Mi':
-      return int(value[:-2])
-    else:
-      raise Exception('Invalid value')
-    
-  def _check_resourse_constraints(self, cpu: str, memory: str):
-    cpu = self._parse_resource_value(cpu)
-    memory = self._parse_resource_value(memory)
-    
-    cpu_to_memory_min = {4: 2048, 6: 4096, 8: 4096}
-    memory_to_cpu_min = {4096: 2, 8192: 4, 16384: 6, 24576: 8}
-    
-    if cpu in cpu_to_memory_min and memory < cpu_to_memory_min[cpu]:
-      raise Exception('Memory is too small')
-    elif memory in memory_to_cpu_min and cpu < memory_to_cpu_min[memory]:
-      raise Exception('CPU is too small')
-    
-    return True
-    
-  def update_resouce(self, cpu: str, memory: str):
-    if self._check_resourse_constraints(cpu, memory):
-      service = self.client.get_service(name=
-        f'projects/{self.project_id}/locations/{self.region}/services/{self.service_name}'
-      )
 
-    def _parse_resource_value(self, value: str):
-        '''
-        Parses the given resource value and returns the corresponding numeric value.
+    def __init__(self, cloud_run_info: CloudRun) -> None:
+        self.cloud_run_info = cloud_run_info
+        self.client = run_v2.ServicesClient()
+        self.is_init_resource = False
 
-        Args:
-          value (str): The resource value to be parsed.
+        self.cpu = CloudRunResource(self)
+        self.memory = CloudRunResource(self)
 
-        Returns:
-          float: The parsed numeric value.
+    def init_resource(self):
+        if not self.is_init_resource:
+            resource = self.get_resource()
 
-        Raises:
-          Exception: If the value is invalid.
-        '''
+            self.cpu.value = self._parse_resource_value_to_int(resource['cpu'])
+            self.memory.value = self._parse_resource_value_to_int(resource['memory'])
+    
+    # if value is memory, return Mi
+    def _parse_resource_value_to_int(self, value: str) -> int:
+        print(value)
         if value[-1] == 'm':
-            return int(value[:-1]) / 1000
+            return int(value[:-1]) // 1000
         elif value[-2:] == 'Gi':
             return int(value[:-2]) * 1024
         elif value[-2:] == 'Mi':
             return int(value[:-2])
         else:
             raise Exception('Invalid value')
+        
+    def _parse_resource_value_to_str(self, value: int) -> str:
+        # this is cpu
+        if value < 16:
+            return f'{value * 1000}m'
+        # below is memory
+        elif value % 1024 == 0:
+            return f'{value // 1024}Gi'
+        else:
+            return f'{value}Mi'
 
-    def _check_resourse_constraints(self, cpu: str, memory: str):
-        '''
-        Checks the resource constraints of the cloud instance.
+    def _check_resourse_constraints(self, cpu: int, memory: int):
+        if cpu < 1 or cpu > 8:
+            return False
+        elif memory < 512 or memory > 24576:
+            return False
 
-        Args:
-          cpu (str): The CPU value of the cloud instance.
-          memory (str): The memory value of the cloud instance.
-
-        Raises:
-          Exception: If the memory is too small compared to the CPU.
-          Exception: If the CPU is too small compared to the memory.
-
-        Returns:
-          bool: True if the resource constraints are satisfied.
-        '''
-        cpu = self._parse_resource_value(cpu)
-        memory = self._parse_resource_value(memory)
+        return True
+    
+    def _auto_update_resource_constraints(self, cpu: int, memory: int):
 
         cpu_to_memory_min = {4: 2048, 6: 4096, 8: 4096}
         memory_to_cpu_min = {4096: 2, 8192: 4, 16384: 6, 24576: 8}
 
         if cpu in cpu_to_memory_min and memory < cpu_to_memory_min[cpu]:
-            raise Exception('Memory is too small')
+            memory = cpu_to_memory_min[cpu]
         elif memory in memory_to_cpu_min and cpu < memory_to_cpu_min[memory]:
-            raise Exception('CPU is too small')
+            cpu = memory_to_cpu_min[memory]
 
-        return True
+        return cpu, memory
 
-    def update_resouce(self, cpu: str, memory: str):
+    def update_resouce(self):
         '''
         Update the resource constraints of the service.
 
@@ -156,20 +152,27 @@ class CloudRunResourceManager:
           cpu (str): The CPU limit for the service.
           memory (str): The memory limit for the service.
         '''
+        cpu = self.cpu.value
+        memory = self.memory.value
         if self._check_resourse_constraints(cpu, memory):
-            full_server_name = self.cloud_run_info.get_full_server_name()
-            service = self.client.get_service(name=full_server_name)
+            cpu, memory = self._auto_update_resource_constraints(cpu, memory)
+            full_service_name = self.cloud_run_info.get_full_service_name()
+            service = self.client.get_service(name=full_service_name)
 
             request = run_v2.UpdateServiceRequest(
                 service=service,
             )
 
             request.service.template.containers[0].resources.limits = {
-                'cpu': cpu,
-                'memory': memory,
+                'cpu': self._parse_resource_value_to_str(cpu),
+                'memory': self._parse_resource_value_to_str(memory),
             }
 
-            self.client.update_service(request=request)
+            print(request.service.template.containers[0].resources.limits)
+
+            # self.client.update_service(request=request)
+        else:
+            raise Exception('Invalid resource constraints')
 
     def get_resource(self):
         '''
@@ -178,8 +181,10 @@ class CloudRunResourceManager:
         Returns:
           The resource limits for the container.
         '''
-        full_server_name = self.cloud_run_info.get_full_server_name()
-        service = self.client.get_service(name=full_server_name)
+
+        # TODO: 優先從 資料庫抓？ 沒有的話再從 GCP 抓
+        full_service_name = self.cloud_run_info.get_full_service_name()
+        service = self.client.get_service(name=full_service_name)
 
         resource = service.template.containers[0].resources.limits
         return resource
@@ -231,7 +236,7 @@ class CloudRunPerformanceMonitor:
 
         return query
 
-    def _process_pd_dataframe(self, df: pd.DataFrame, options: dict=None):
+    def _process_pd_dataframe(self, df: pd.DataFrame, options: dict = None):
         '''
         Processes the Pandas dataframe.
 
@@ -248,7 +253,7 @@ class CloudRunPerformanceMonitor:
 
         if not metric_label is None:
             if metric_new_label is None:
-              metric_new_label = metric_label
+                metric_new_label = metric_label
             try:
                 values = df.columns.get_level_values(metric_label).values
                 df.columns = [f'{metric_new_label} ({i})' for i in values]
@@ -262,26 +267,26 @@ class CloudRunPerformanceMonitor:
         return df
 
     def get_scalar_query(
-            self, query: Query
-        ) -> Query:
-            """
-            Returns a modified query object with alignment and reduction applied.
+        self, query: Query
+    ) -> Query:
+        """
+        Returns a modified query object with alignment and reduction applied.
 
-            Args:
-                query (Query): The original query object.
+        Args:
+            query (Query): The original query object.
 
-            Returns:
-                Query: The modified query object.
-            """
-            query = query.align(
-                monitoring_v3.Aggregation.Aligner.ALIGN_MEAN, seconds=10)
-            
-            query = query.reduce(
-                monitoring_v3.Aggregation.Reducer.REDUCE_SUM,
-                'metric.label.state',
-                'metric.label.response_code_class',
-            )
-            return query
+        Returns:
+            Query: The modified query object.
+        """
+        query = query.align(
+            monitoring_v3.Aggregation.Aligner.ALIGN_MEAN, seconds=10)
+
+        query = query.reduce(
+            monitoring_v3.Aggregation.Reducer.REDUCE_SUM,
+            'metric.label.state',
+            'metric.label.response_code_class',
+        )
+        return query
 
     def get_distrbution_query(
         self, query: Query
@@ -301,7 +306,7 @@ class CloudRunPerformanceMonitor:
         query = query.reduce(monitoring_v3.Aggregation.Reducer.REDUCE_MEAN)
         return query
 
-    def get_metric(self, metric_type: str, time_range: TimeRange, options: dict=None):
+    def get_metric(self, metric_type: str, time_range: TimeRange, options: dict = None):
         query = self._get_metric_query(metric_type, time_range)
 
         if metric_type in self.scalar_type:
@@ -324,15 +329,18 @@ class CloudRunPerformanceMonitor:
         '''
 
         start, end = time_range.get_time_range_iso()
+        print(start, end)
 
         filter_str = f'''
-        resource.type='cloud_run_revision'
-        resource.labels.service_name='{self.cloud_run_info.service_name}'
-        timestamp>='{start}Z'
-        timestamp<='{end}Z'
-        ERROR
-        severity!='ERROR'
-        '''
+resource.type="cloud_run_revision"
+resource.labels.service_name="{self.cloud_run_info.service_name}"
+timestamp>="{start}Z"
+timestamp<="{end}Z"
+ERROR
+severity!="ERROR"
+'''
+
+        print(filter_str)
 
         entries = self.logging_client.list_entries(filter_=filter_str)
 
@@ -352,7 +360,8 @@ if __name__ == '__main__':
     crpm = CloudRunPerformanceMonitor(cr)
     time_range = UntilNowTimeRange(minutes=35)
 
-    tmp = crpm.get_metric('run.googleapis.com/container/instance_count', time_range, 'state', 'Instance Count')
+    tmp = crpm.get_metric('run.googleapis.com/container/instance_count',
+                          time_range, 'state', 'Instance Count')
     print(tmp)
 
     # metries_datas = []
