@@ -1,7 +1,10 @@
 import sqlite3
-
+import threading
 from flask import jsonify, g
-
+from genAI.cloud import CloudRun,  CloudRunPerformanceMonitor, UntilNowTimeRange, SpecificTimeRange
+from genAI.llm import LLM
+from concurrent.futures import ThreadPoolExecutor, as_completed
+import pandas as pd
 def get_db():
     # if 'db' not in g:
     #     # 假設你的資料庫連接函式是這樣的
@@ -21,10 +24,108 @@ def init_db():
         db.executescript(f.read())
     db.commit()
 
+def get_metric_wrapper(crpm: CloudRunPerformanceMonitor, metric_type: str, until_now, options: dict):
+    return crpm.get_metric(metric_type, until_now, options=options)
+
+
+def polling_metric(crpm: CloudRunPerformanceMonitor):
+    until_now = UntilNowTimeRange(minutes=10)
+    metries_datas = []
+
+    metries_types_and_name = [
+        {
+            'metric_type': 'run.googleapis.com/request_count',
+            'options': {
+                'metric_label': 'response_code_class',
+                'metric_new_label': 'Request Count'
+            }
+        },
+        {
+            'metric_type': 'run.googleapis.com/request_latencies',
+            'options': {
+                'metric_label': 'Container Startup Latency (ms)',
+            }
+        },
+        {
+            'metric_type': 'run.googleapis.com/container/instance_count',
+            'options': {
+                'metric_label': 'state',
+                'metric_new_label': 'Instance Count'
+            }
+        },
+        {
+            'metric_type': 'run.googleapis.com/container/cpu/utilizations',
+            'options': {
+                'metric_label': 'Container CPU Utilization (%)',
+                'multiply': 100
+            }
+        },
+        {
+            'metric_type': 'run.googleapis.com/container/memory/utilizations',
+            'options': {
+                'metric_label': 'Container Memory Utilization (%)',
+                'multiply': 100
+            }
+        },
+        {
+            'metric_type': 'run.googleapis.com/container/startup_latencies',
+            'options': {
+                'metric_label': 'Container Startup Latency (ms)',
+            }
+        }
+    ]
+
+    with ThreadPoolExecutor(max_workers=len(metries_types_and_name)) as executor:
+        future_to_metric = {
+            executor.submit(get_metric_wrapper,
+                            crpm,
+                            mt['metric_type'],
+                            until_now,
+                            options=mt['options']
+                            ): mt for mt in metries_types_and_name}
+
+        metries_datas = []
+        for future in as_completed(future_to_metric):
+            metries_datas.append(future.result())
+
+    res = pd.concat(metries_datas, axis=1)
+    ignore_dropna_fields = ['Container Startup Latency (ms)']
+    res = res.dropna(
+        subset=[col for col in res.columns if not col in ignore_dropna_fields])
+    res = res[sorted(res.columns)]
+    return res
+
+
+def query(cr: CloudRun):
+    crpm = CloudRunPerformanceMonitor(cr)
+    result = polling_metric(crpm)
+
+    metrcis = [item.to_dict() for item in result.iloc]
+    if MetrixUtil.check_metrics_abnormalities(metrcis):
+        # 獲取該 metrixs 的 第一筆資料 和 最後一筆資料 的時間
+        start_time, end_time = result.index[0], result.index[-1]
+        time_range = SpecificTimeRange(start_time, end_time)
+        logs = crpm.get_logs(time_range)
+
+        if logs is []:
+            logs = '沒有 log'
+
+        text = LLM.AnalysisError.gen(data=f'指標：\b{result.to_dict()}\n錯誤訊息:\n{logs}')
+        # todo: send to discord by websocket
+        print(text)
+    pass
+
+interval_seconds = 30
 def register_cloud_run_service(guild_id, channel_id, region, project_id, service_name):
+    def run_timer(guild_id, channel_id, cr: CloudRun):
+        query()
+        timer = threading.Timer(interval_seconds, run_timer, [guild_id, channel_id, region, project_id, service_name])
+        timer.daemon = True
+        timer.start()
+
+
     db = get_db()
     cursor = db.cursor()
-
     # 插入資料前，先檢查是否已存在相同的主鍵組合
     cursor.execute('''
   SELECT * FROM cloud_run_service WHERE region=? AND project_id=? AND service_name=?
@@ -39,6 +140,10 @@ def register_cloud_run_service(guild_id, channel_id, region, project_id, service
     VALUES (?, ?, ?, ?, ?)
     ''', (guild_id, channel_id, region, project_id, service_name))
         db.commit()
+        cr = CloudRun(region=region, project_id=project_id, service_name=service_name)
+        timer_thread = threading.Thread(target=run_timer, args=(guild_id, channel_id, cr))
+        timer_thread.daemon = True
+        timer_thread.start()
         return jsonify({'message': 'Service registered'}), 201
 
 def unregister_cloud_run_service(guild_id, channel_id, region, project_id, service_name):
