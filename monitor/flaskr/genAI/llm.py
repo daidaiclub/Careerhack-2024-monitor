@@ -1,5 +1,9 @@
 from vertexai.preview.language_models import TextGenerationModel
+import vertexai
 
+vertexai.init(
+    project='tsmccareerhack2024-icsd-grp3',
+)
 def get_parameters():
     return {
         "temperature": 0.3,
@@ -20,10 +24,19 @@ class LLMSingleton:
         ---
         {self.prompt}
         """     
-        response = self.model.predict(
-            combined_prompt,
-            **self.parameters,
-        )
+        try:
+            response = self.model.predict(
+                combined_prompt,
+                **self.parameters,
+            )
+        except:
+            import time
+            time.sleep(50)
+            response = self.model.predict(
+                combined_prompt,
+                **self.parameters,
+            )
+
         return response.text
     
     def set_prompt(self, prompt: str):
