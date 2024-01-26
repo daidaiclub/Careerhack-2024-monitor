@@ -14,6 +14,7 @@ class TimeRange(ABC):
 
     @abstractmethod
     def get_minutes(self) -> int:
+        self.end_time = 0
         pass
 
     @abstractmethod
@@ -23,8 +24,8 @@ class TimeRange(ABC):
 class UntilNowTimeRange(TimeRange):
     def __init__(self, days: int, hours: int, minutes: int) -> None:
         self.minutes = days * 24 * 60 + hours * 60 + minutes
-        self.start_time = datetime.utcnow() - timedelta(minutes=self.minutes)
-        self.end_time = datetime.utcnow()
+        self.start_time = datetime.now() - timedelta(minutes=self.minutes)
+        self.end_time = datetime.now()
 
     def get_minutes(self) -> int:
         return self.minutes
@@ -167,20 +168,21 @@ class CloudRunPerformanceMonitor:
             self.monitoring_client, 
             project=self.cloud_run_info.project_id,
             metric_type=metric_type,
+            end_time=time_range.end_time,
+            # end_time=datetime.fromisoformat("2024-01-26 11:41:00.000000"),
             minutes=time_range.get_minutes(),
         )
-        query = query.select_resources(
-            zone=self.cloud_run_info.region,
-            service_name=self.cloud_run_info.service_name,
-            resource_type="cloud_run_revision",
-        )
+
+        query = query.select_resources(zone=self.cloud_run_info.region)
+        query = query.select_resources(resource_type="cloud_run_revision")
+        query = query.select_resources(service_name=self.cloud_run_info.service_name)
 
         result = query.as_dataframe()
         return result
 
 
 if __name__ == "__main__":
-    cr = CloudRun("us-central1", "tsmccareerhack2024-icsd-grp3", "sso-tsmc")
+    cr = CloudRun("us-central1", "tsmccareerhack2024-icsd-grp3", "sso-tsmc-2")
     # crm = CloudRunResourceManager(cr)
     # crm.update_resouce("4000m", "2Gi")
     # print(crm.get_resource())
@@ -188,7 +190,8 @@ if __name__ == "__main__":
     crpm = CloudRunPerformanceMonitor(cr)
 
     metrics_type = 'run.googleapis.com/request_count'
-    time_range = UntilNowTimeRange(days=0, hours=1, minutes=0)
+    # metrics_type = 'run.googleapis.com/container/cpu/utilizations'
+    time_range = UntilNowTimeRange(days=0, hours=0, minutes=10)
     result = crpm.get_metric(metrics_type, time_range)
 
     print(result)
