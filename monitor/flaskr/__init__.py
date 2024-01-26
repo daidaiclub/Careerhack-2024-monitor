@@ -1,16 +1,19 @@
 import os
 import websocket
-from flask import Flask, request, jsonify
+from flask import Flask, request, jsonify, g
 from flaskr import hello as h
+from flaskr import tmp as t
+from flaskr import dcbot as d
 import dotenv
 import threading
 import asyncio
 import datetime
 import zipfile
 import shutil
-from dcbot import gen
 
 dotenv.load_dotenv()
+
+t.init_db()
 
 DCBOT_SOCKET_URI = os.getenv('DCBOT_SOCKET_URI')
 
@@ -88,6 +91,7 @@ def create_app(test_config=None) -> Flask:
                 return jsonify({'message': 'cannot send message'}), 500
 
         return jsonify({'message': 'ok'}), 200
+    
     @app.route('/gen', methods=['POST'])
     def gen():
         if 'file' not in request.files:
@@ -110,9 +114,27 @@ def create_app(test_config=None) -> Flask:
             os.remove(zip_path)
             # 確認長度是否為 6
             # todo 呼叫 gen
-            ret = gen(temp_dir)
+            ret = d.gen(temp_dir)
             shutil.rmtree(temp_dir)
             return jsonify({'report': ret}), 200
+    
+    @app.route('/dcbot/guilds/<guild_id>/channels/<channel_id>/cloud_run_services/<region>/<project_id>/<service_name>', methods=['POST'])
+    def register_cloud_run_service(guild_id, channel_id, region, project_id, service_name):
+        return t.register_cloud_run_service(guild_id, channel_id, region, project_id, service_name)
+    
+    @app.route('/dcbot/guilds/<guild_id>/channels/<channel_id>/cloud_run_services/<region>/<project_id>/<service_name>', methods=['DELETE'])
+    def unregister_cloud_run_service(guild_id, channel_id, region, project_id, service_name):
+        return t.unregister_cloud_run_service(guild_id, channel_id, region, project_id, service_name)
+    
+    @app.route('/dcbot/guilds/<guild_id>/channels/<channel_id>/cloud_run_services', methods=['GET'])
+    def list_cloud_run_services(guild_id, channel_id):
+        return t.list_cloud_run_services(guild_id, channel_id)
+    
+    @app.teardown_appcontext
+    def close_db(error):
+        # 如果這個請求中用到了資料庫連接，就關閉它
+        if 'db' in g:
+            g.db.close()
 
          
     return app
