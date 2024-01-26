@@ -20,17 +20,17 @@ async def response(websocket, path):
     global discord_channel
 
     async for message in websocket:
-        print(f"[ws server] message  < {message}")
+        print(f"[ws server] message  < {message}", flush=True)
 
         if not discord_channel:
-            print('[ws server] getting discord channel:', DISCORD_CHANNEL_ID)
+            print('[ws server] getting discord channel:', DISCORD_CHANNEL_ID, flush=True)
             discord_channel = client.get_channel(DISCORD_CHANNEL_ID)
         if not discord_channel:
-            print("[ws server] [ERROR] can't access channel:", DISCORD_CHANNEL_ID)
+            print("[ws server] [ERROR] can't access channel:", DISCORD_CHANNEL_ID, flush=True)
         else:
-            print('[ws server] channel:', discord_channel, 'message:', message)
+            print('[ws server] channel:', discord_channel, 'message:', message, flush=True)
             await discord_channel.send(message)
-            print('[ws server] message sent')
+            print('[ws server] message sent', flush=True)
 
 # --- discord ---
 
@@ -42,35 +42,35 @@ async def on_ready():
     global discord_channel
 
     if not discord_channel:
-        print('[on_ready] getting discord channel:', DISCORD_CHANNEL_ID)
+        print('[on_ready] getting discord channel:', DISCORD_CHANNEL_ID, flush=True)
         discord_channel = client.get_channel(DISCORD_CHANNEL_ID)
 
     if not discord_channel:
-        print("[on_ready] can't access channel:", DISCORD_CHANNEL_ID)
+        print("[on_ready] can't access channel:", DISCORD_CHANNEL_ID, flush=True)
     else:
-        print('[on_ready] channel:', discord_channel)
+        print('[on_ready] channel:', discord_channel, flush=True)
     
     try:
         synced = await client.tree.sync()
-        print('[on_ready] synced:', synced)
+        print('[on_ready] synced:', synced, flush=True)
     except Exception as e:
-        print('[on_ready] [ERROR] sync failed:', e)
+        print('[on_ready] [ERROR] sync failed:', e, flush=True)
 
 @client.command()
 async def ping(ctx, arg=''):
-    print(f'[ping] ping {arg}')
+    print(f'[ping] ping {arg}', flush=True)
     await ctx.send(f'pong {arg}')
 
 @client.tree.command()
 async def slash_ping(interaction):
-    print('[slash_ping] ping')
+    print('[slash_ping] ping', flush=True)
     await interaction.response.send_message('pong')
 
 @client.event
 async def on_message(message):
     if message.author == client.user:
         return
-    print('[on_message] message.content:', message.content)
+    print('[on_message] message.content:', message.content, flush=True)
     await client.process_commands(message)
 
 # --- start ---
@@ -81,13 +81,13 @@ def main():
 
     # - websockets -
 
-    print(f'running websockets on port {WEBSOCKET_PORT}')
+    print(f'running websockets on port {WEBSOCKET_PORT}', flush=True)
     server = websockets.serve(response, '', WEBSOCKET_PORT)
     loop.run_until_complete(server)
 
     # - discord -
 
-    print('running discord')
+    print('running discord', flush=True)
     loop.run_until_complete(client.start(DISCORD_TOKEN))
     loop.run_forever()
 

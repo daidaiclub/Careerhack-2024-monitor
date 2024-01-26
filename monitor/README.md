@@ -1,5 +1,12 @@
 # TSMC DC Bot
 
+## set `.env`
+
+```
+FLASK_PORT=<flask server port>
+DCBOT_SOCKET_URI=<dcbot websocket uri>
+```
+
 ## Build and run
 
 ```bash
