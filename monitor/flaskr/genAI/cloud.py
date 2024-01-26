@@ -168,9 +168,7 @@ class CloudRunResourceManager:
                 'memory': self._parse_resource_value_to_str(memory),
             }
 
-            print(request.service.template.containers[0].resources.limits)
-
-            # self.client.update_service(request=request)
+            self.client.update_service(request=request)
         else:
             raise Exception('Invalid resource constraints')
 
