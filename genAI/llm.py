@@ -16,10 +16,10 @@ class LLMSingleton:
     
     def gen(self, data: str):
         combined_prompt = f"""
-{data}
----
-{self.prompt}
-"""     
+        {data}
+        ---
+        {self.prompt}
+        """     
         response = self.model.predict(
             combined_prompt,
             **self.parameters,
