@@ -22,4 +22,5 @@ Scripts
 pyvenv.cfg
 # dev containers
 .devcontainer/
-.github/
+.github
+!/.github
