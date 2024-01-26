@@ -39,26 +39,18 @@ class MetrixUtil:
 
         return times_dict['cpu'] >= 2 or times_dict['memory'] >= 2
 
-
-
 def gen(temp_dir: str):
-  data_frames = []
-  for entry in os.listdir(temp_dir):
-    data_frames.append(pd.read_csv(os.path.join(temp_dir, entry)))
-  data_frames = list(map(lambda df: df.assign(Time=pd.to_datetime(df['Time'])), data_frames))
-  merged_data = reduce(lambda left, right: pd.merge(
-      left, right, on=['Time'], how='outer'), data_frames)
-  merged_data = merged_data.set_index('Time')
-  mdpdf = "報告書\n"
-  for i in range(2, len(merged_data) - 1):
-    metrics = [item.to_dict() for item in merged_data.iloc[i-2:i]]
-    if MetrixUtil.check_metrics_abnormalities(metrics):
-      mdpdf += f'## 異常時間: {merged_data.index[i]}\n'
-      mdpdf += LLM.AnalysisError.gen(data=f'指標：metrics[i-2:i]')
-  return mdpdf
-      # print(f'abnormal: {column}')
-  # todo markdown to pdf
-      
-  
-  pass
-  
+    data_frames = []
+    for entry in os.listdir(temp_dir):
+        data_frames.append(pd.read_csv(os.path.join(temp_dir, entry)))
+    data_frames = list(map(lambda df: df.assign(Time=pd.to_datetime(df['Time'])), data_frames))
+    merged_data = reduce(lambda left, right: pd.merge(
+        left, right, on=['Time'], how='outer'), data_frames)
+    merged_data = merged_data.set_index('Time')
+    mdpdf = "報告書\n"
+    for i in range(2, len(merged_data) - 1):
+        metrics = [item.to_dict() for item in merged_data.iloc[i-2:i]]
+        if MetrixUtil.check_metrics_abnormalities(metrics):
+            mdpdf += f'## 異常時間: {merged_data.index[i]}\n'
+            mdpdf += LLM.AnalysisError.gen(data=f'指標：{metrics[i-2:i].to_dict()}')
+    return mdpdf
