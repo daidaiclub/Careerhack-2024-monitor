@@ -1,6 +1,6 @@
 import os
 import websocket
-from flask import Flask, request, jsonify, g
+from flask import Flask, request, jsonify, g, send_file
 from flaskr import hello as h
 from flaskr import tmp as t
 from flaskr import dcbot as d
@@ -10,6 +10,9 @@ import asyncio
 import datetime
 import zipfile
 import shutil
+from weasyprint import HTML
+import markdown
+from io import BytesIO
 
 dotenv.load_dotenv()
 
@@ -113,11 +116,13 @@ def create_app(test_config=None) -> Flask:
             # remove zip
             os.remove(zip_path)
             # 確認長度是否為 6
-            # todo 呼叫 gen
-            ret = d.gen(temp_dir)
+            mdpdf = d.gen(temp_dir)
             shutil.rmtree(temp_dir)
-            return jsonify({'report': ret}), 200
-    
+            html = markdown.markdown(mdpdf)
+            pdf = HTML(string=html).write_pdf()
+            buffer = BytesIO(pdf)
+            return send_file(buffer, as_attachment=True, attachment_filename="output.pdf", mimetype='application/pdf')
+        return jsonify({'message': 'invalid file'}), 400
     @app.route('/dcbot/guilds/<guild_id>/channels/<channel_id>/cloud_run_services/<region>/<project_id>/<service_name>', methods=['POST'])
     def register_cloud_run_service(guild_id, channel_id, region, project_id, service_name):
         return t.register_cloud_run_service(guild_id, channel_id, region, project_id, service_name)

@@ -39,6 +39,8 @@ class MetrixUtil:
 
         return times_dict['cpu'] >= 2 or times_dict['memory'] >= 2
 
+
+
 def gen(temp_dir: str):
   data_frames = []
   for entry in os.listdir(temp_dir):
@@ -53,6 +55,7 @@ def gen(temp_dir: str):
     if MetrixUtil.check_metrics_abnormalities(metrics):
       mdpdf += f'## 異常時間: {merged_data.index[i]}\n'
       mdpdf += LLM.AnalysisError.gen(data=f'指標：metrics[i-2:i]')
+  return mdpdf
       # print(f'abnormal: {column}')
   # todo markdown to pdf
       
