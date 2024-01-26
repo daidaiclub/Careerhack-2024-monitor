@@ -5,6 +5,10 @@ from flaskr import hello as h
 import dotenv
 import threading
 import asyncio
+import datetime
+import zipfile
+import shutil
+from dcbot import gen
 
 dotenv.load_dotenv()
 
@@ -84,5 +88,31 @@ def create_app(test_config=None) -> Flask:
                 return jsonify({'message': 'cannot send message'}), 500
 
         return jsonify({'message': 'ok'}), 200
+    @app.route('/gen', methods=['POST'])
+    def gen():
+        if 'file' not in request.files:
+            return jsonify({'message': 'file is required'}), 400
+        
+        file = request.files['file']
+        if file.filename == '':
+            return jsonify({'message': 'file is required'}), 400
+        if file and file.filename.endswith('.zip'):
+            # save zip to temp with now datetime dir
+            now = datetime.datetime.now()
+            temp_dir = f'temp-{now.strftime("%Y-%m-%d-%H-%M-%S")}'
+            os.makedirs(temp_dir)
+            zip_path = os.path.join(temp_dir, file.filename)
+            file.save(zip_path)
+            # unzip
+            with zipfile.ZipFile(zip_path, 'r') as zip_ref:
+                zip_ref.extractall(temp_dir)
+            # remove zip
+            os.remove(zip_path)
+            # 確認長度是否為 6
+            # todo 呼叫 gen
+            ret = gen(temp_dir)
+            shutil.rmtree(temp_dir)
+            return jsonify({'report': ret}), 200
 
+         
     return app

@@ -83,7 +83,7 @@ def get_metric_wrapper(crpm: CloudRunPerformanceMonitor, metric_type: str, until
     return crpm.get_metric(metric_type, until_now, options=options)
 
 def polling_metric(crpm: CloudRunPerformanceMonitor):
-    until_now = UntilNowTimeRange(minutes=8)
+    until_now = UntilNowTimeRange(minutes=10)
     metries_datas = []
 
     metries_types_and_name = [
@@ -143,11 +143,10 @@ def polling_metric(crpm: CloudRunPerformanceMonitor):
             metries_datas.append(future.result())
 
     res = pd.concat(metries_datas, axis=1)
-    ignore_dropna_fields = ['startup_latency']
+    ignore_dropna_fields = ['Container Startup Latency (ms)']
     res = res.dropna(
         subset=[col for col in res.columns if not col in ignore_dropna_fields])
     res = res[sorted(res.columns)]
-
     return res
 
 if __name__ == '__main__':
@@ -160,33 +159,32 @@ if __name__ == '__main__':
         result = polling_metric(crpm)
 
         # 如果最後兩筆的指標有異常的話，就會丟到 llm 讓他生成的錯誤報告
-        # if MetrixUtil.check_metrics_abnormalities(result.iloc[-1].to_dict()):
-        #     # 獲取該 metrixs 的 第一筆資料 和 最後一筆資料 的時間
-        #     start_time, end_time = result.index[0], result.index[-1]
-        #     time_range = SpecificTimeRange(start_time, end_time)
-        #     logs = crpm.get_logs(time_range)
+        metrcis = [item.to_dict() for item in result.iloc]
+        if MetrixUtil.check_metrics_abnormalities(metrcis):
+            # 獲取該 metrixs 的 第一筆資料 和 最後一筆資料 的時間
+            start_time, end_time = result.index[0], result.index[-1]
+            time_range = SpecificTimeRange(start_time, end_time)
+            logs = crpm.get_logs(time_range)
 
-        #     if logs is []:
-        #         logs = '沒有 log'
+            if logs is []:
+                logs = '沒有 log'
 
-        #     text = LLM.AnalysisError.gen(data=f'指標：\b{result.to_dict()}\n錯誤訊息:\n{logs}')
-        #     print(text)
+            text = LLM.AnalysisError.gen(data=f'指標：\b{result.to_dict()}\n錯誤訊息:\n{logs}')
+            print(text)
 
         # handel auto scaling cloud run resource
-        crm = CloudRunResourceManager(cr)
-        resource_data = result.iloc[-1].to_dict()
-        if resource_data['Container CPU Utilization (%)'] > 50:
-            crm.cpu.scale_up()
-        elif resource_data['Container CPU Utilization (%)'] < 30:
-            crm.cpu.scale_down()
+        # crm = CloudRunResourceManager(cr)
+        # resource_data = result.iloc[-1].to_dict()
+        # if resource_data['Container CPU Utilization (%)'] > 50:
+        #     crm.cpu.scale_up()
+        # elif resource_data['Container CPU Utilization (%)'] < 30:
+        #     crm.cpu.scale_down()
 
-        if resource_data['Container Memory Utilization (%)'] > 50:
-            crm.memory.scale_up()
-        elif resource_data['Container Memory Utilization (%)'] < 30:
-            crm.memory.scale_down()
+        # if resource_data['Container Memory Utilization (%)'] > 50:
+        #     crm.memory.scale_up()
+        # elif resource_data['Container Memory Utilization (%)'] < 30:
+        #     crm.memory.scale_down()
 
-    main()
-    main()
     main()
     # interval_seconds = 30
 
