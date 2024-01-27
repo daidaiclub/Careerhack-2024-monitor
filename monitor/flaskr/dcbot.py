@@ -16,6 +16,8 @@ from flaskr.dcbot_websocket import DCBotWebSocket
 class MetrixUtil:
     @staticmethod
     def check_metrics_abnormalities(metrics: list[dict]):
+        if len(metrics) == 0 :
+            return False
         metric = metrics[-1]
 
         if metric.get('Container Startup Latency (ms)', 0) > 0:
