@@ -7,13 +7,23 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from functools import reduce
 from flask import jsonify
 import pandas as pd
-from flaskr import logger
+import logging
 
 from flaskr.genAI.llm import LLM
 from flaskr.db import get_db
 from flaskr.genAI.cloud import (CloudRun, CloudRunPerformanceMonitor,
                                 UntilNowTimeRange, SpecificTimeRange, CloudRunResourceManager)
 from flaskr.dcbot_websocket import DCBotWebSocket
+
+# --- logger
+
+logger = logging.getLogger(__name__)
+logger.setLevel(level=logging.DEBUG)
+handler = logging.StreamHandler()
+formatter = logging.Formatter(
+    '%(asctime)s %(levelname)s [%(funcName)s]: %(message)s')
+handler.setFormatter(formatter)
+logger.addHandler(handler)
 
 def check_metrics_abnormalities(metrics: list[dict]):
     """

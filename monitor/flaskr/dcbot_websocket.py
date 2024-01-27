@@ -5,7 +5,17 @@ import asyncio
 import threading
 import websocket
 from websocket import WebSocketException
-from flaskr import logger
+import logging
+
+# --- logger
+
+logger = logging.getLogger(__name__)
+logger.setLevel(level=logging.DEBUG)
+handler = logging.StreamHandler()
+formatter = logging.Formatter(
+    '%(asctime)s %(levelname)s [%(funcName)s]: %(message)s')
+handler.setFormatter(formatter)
+logger.addHandler(handler)
 
 DCBOT_SOCKET_URI = os.getenv('DCBOT_SOCKET_URI')
 
