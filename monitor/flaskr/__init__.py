@@ -1,5 +1,5 @@
-from weasyprint import HTML
 from io import BytesIO
+from weasyprint import HTML
 from flask import Flask, request, jsonify, send_file
 import os
 import dotenv
@@ -11,7 +11,6 @@ import markdown
 import json
 import threading
 import logging
-
 import base64
 from flaskr import dcbot
 from flaskr.db import init_db
