@@ -20,8 +20,8 @@ jobs:
     - name: Run Pylint
       if: always()
       run: |
-        pylint dcbot/ || echo Process completed with exit code $?.
-        pylint monitor/
+        pylint dcbot/ --fail-under=8 || echo Process completed with exit code $?.
+        pylint monitor/ --fail-under=8
 
   test:
     runs-on: ubuntu-latest

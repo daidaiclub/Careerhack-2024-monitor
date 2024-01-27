@@ -1,13 +1,13 @@
 """ This module contains the functions for monitoring Cloud Run services. """
 import threading
 import os
-import logging
 import json
 from datetime import datetime
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from functools import reduce
 from flask import jsonify
 import pandas as pd
+from flaskr import logger
 
 from flaskr.genAI.llm import LLM
 from flaskr.db import get_db
@@ -25,7 +25,9 @@ def check_metrics_abnormalities(metrics: list[dict]):
     Returns:
         bool: True if abnormalities are detected, False otherwise.
     """
-    logging.debug('check_metrics_abnormalities: %s', metrics)
+    if len(metrics) == 0:
+        return False
+    logger.debug('check_metrics_abnormalities: %s', metrics)
     metric = metrics[-1]
 
     if metric.get('Container Startup Latency (ms)', 0) > 0:
@@ -157,7 +159,7 @@ def get_lastest_llm_query_time(region, project_id, service_name):
         str: The latest LLM query time.
 
     """
-    logging.debug('get_lastest_llm_query_time: %s, %s, %s',
+    logger.debug('get_lastest_llm_query_time: %s, %s, %s',
                   region, project_id, service_name)
     db = get_db()
     cursor = db.cursor()
@@ -182,7 +184,7 @@ def set_lastest_llm_query_time(region, project_id, service_name, lastest_llm_que
     Returns:
         None
     """
-    logging.debug('set_lastest_llm_query_time: %s, %s, %s, %s',
+    logger.debug('set_lastest_llm_query_time: %s, %s, %s, %s',
                   region, project_id, service_name, lastest_llm_query_time)
     db = get_db()
     cursor = db.cursor()
@@ -208,7 +210,7 @@ def is_cloud_run_service_registered(guild_id, channel_id, region, project_id, se
     Returns:
         bool: True if the Cloud Run service is registered, False otherwise.
     """
-    logging.debug('is_cloud_run_service_registered: %s, %s, %s, %s, %s',
+    logger.debug('is_cloud_run_service_registered: %s, %s, %s, %s, %s',
                   guild_id, channel_id, region, project_id, service_name)
     db = get_db()
     cursor = db.cursor()
@@ -231,7 +233,7 @@ def query(cr: CloudRun, channel_id):
     Returns:
         None
     """
-    logging.debug('query: %s', cr)
+    logger.debug('query: %s', cr)
     lastest_llm_query_time = get_lastest_llm_query_time(
         cr.region, cr.project_id, cr.service_name)
     query_time = datetime.fromisoformat(
@@ -267,7 +269,6 @@ def query(cr: CloudRun, channel_id):
             'message': message
         }
         DCBotWebSocket.send(json.dumps(ws_message))
-        # print(text)
 
     cpu_util = metrics[-1].get('Container CPU Utilization (%)', 0)
     mem_util = metrics[-1].get('Container Memory Utilization (%)', 0)
