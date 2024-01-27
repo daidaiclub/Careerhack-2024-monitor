@@ -160,4 +160,5 @@ def create_app() -> Flask:
     def list_cloud_run_services(guild_id, channel_id):
         return dcbot.list_cloud_run_services(guild_id, channel_id)
 
+    dcbot.init_already_registered_services()
     return app

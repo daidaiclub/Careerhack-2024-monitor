@@ -295,6 +295,51 @@ def query(cr: CloudRun, channel_id):
     elif mem_util < 30:
         crm.memory.scale_down()
 
+def run_timer(guild_id, channel_id, cr: CloudRun):
+    """
+    Run a timer that periodically executes the query function for a given CloudRun instance.
+
+    Args:
+        guild_id (str): The ID of the guild.
+        channel_id (str): The ID of the channel.
+        cr (CloudRun): The CloudRun instance.
+
+    Returns:
+        None
+    """
+    if not is_cloud_run_service_registered(
+            guild_id, channel_id, cr.region, cr.project_id, cr.service_name):
+        return
+    timer = threading.Timer(30, run_timer, [guild_id, channel_id, cr])
+    timer.daemon = True
+    timer.start()
+    query(cr, channel_id)
+
+def init_already_registered_services():
+    """
+    Initializes the already registered Cloud Run services.
+
+    Returns:
+        None
+    """
+    db = get_db()
+    cursor = db.cursor()
+
+    cursor.execute('''
+    SELECT * FROM cloud_run_service
+    ''')
+
+    for row in cursor.fetchall():
+        guild_id = row[5]
+        channel_id = row[3]
+        region = row[0]
+        project_id = row[1]
+        service_name = row[2]
+        cr = CloudRun(region, project_id, service_name)
+        timer_thread = threading.Thread(target=run_timer, args=(
+            guild_id, channel_id, cr))
+        timer_thread.daemon = True
+        timer_thread.start()
 
 def genai(temp_dir: str):
     """
@@ -354,14 +399,6 @@ def register_cloud_run_service(guild_id, channel_id, region, project_id, service
     Returns:
         tuple: A tuple containing the response message and status code.
     """
-    def run_timer(guild_id, channel_id, cr: CloudRun):
-        if not is_cloud_run_service_registered(
-                guild_id, channel_id, cr.region, cr.project_id, cr.service_name):
-            return
-        timer = threading.Timer(30, run_timer, [guild_id, channel_id, cr])
-        timer.daemon = True
-        timer.start()
-        query(cr, channel_id)
     db = get_db()
     cursor = db.cursor()
 
