@@ -334,16 +334,35 @@ def query(cr: CloudRun, channel_id):
     elif container_startup_latencies == 0:
         cpu -= 1
         mem -= 1
+
+    message = f'- service name: **{cr.service_name}**\n'
+    message += f'  - project id: **{cr.project_id}**\n'
+    message += f'  - region: **{cr.region}**\n'
     
     if cpu > 0:
         crm.cpu.scale_up()
+        DCBotWebSocket.send(json.dumps({
+            'channel_id': channel_id,
+            'message': message + 'CPU **增加**資源'
+        }))
     elif cpu < 0:
         crm.cpu.scale_down()
-    
+        DCBotWebSocket.send(json.dumps({
+            'channel_id': channel_id,
+            'message': message + 'CPU **減少**資源'
+        }))
     if mem > 0:
         crm.memory.scale_up()
+        DCBotWebSocket.send(json.dumps({
+            'channel_id': channel_id,
+            'message': message + 'Memory **增加**資源'
+        }))
     elif mem < 0:
         crm.memory.scale_down()
+        DCBotWebSocket.send(json.dumps({
+            'channel_id': channel_id,
+            'message': message + 'Memory **減少**資源'
+        }))
 
 def run_timer(guild_id, channel_id, cr: CloudRun):
     """
