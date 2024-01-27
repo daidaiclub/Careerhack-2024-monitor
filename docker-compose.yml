@@ -6,7 +6,7 @@ services:
       - "8765:8765"
     environment:
       - "WEBSOCKET_PORT=8765"
-      - "MONITOR_URL=http://tsmc-monitor:8080"
+      - "MONITOR_URL=http://careerhack-monitor:8080"
     env_file:
       - "dcbot/.env"
     networks:
