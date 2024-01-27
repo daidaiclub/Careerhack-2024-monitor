@@ -4,6 +4,9 @@ services:
     image: us-central1-docker.pkg.dev/tsmccareerhack2024-icsd-grp3/tsmccareerhack2024-icsd-grp3-repository/careerhack-dcbot:1.0.0
     ports:
       - "8765:8765"
+    environment:
+      - "WEBSOCKET_PORT=8765"
+      - "MONITOR_URL=http://careerhack-monitor:8080"
     env_file:
       - "dcbot/.env"
     networks:
@@ -14,8 +17,8 @@ services:
     image: us-central1-docker.pkg.dev/tsmccareerhack2024-icsd-grp3/tsmccareerhack2024-icsd-grp3-repository/careerhack-monitor:1.0.0
     ports:
       - "8080:8080"
-    env_file:
-      - "monitor/.env"
+    environment:
+      - "DCBOT_SOCKET_URI=ws://careerhack-dcbot:8765"
     networks:
       - careerhack-network
     volumes:
