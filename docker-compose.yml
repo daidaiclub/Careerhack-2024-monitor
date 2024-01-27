@@ -1,27 +1,27 @@
 version: '3.8'
 services:
-  tsmc-dcbot:
-    image: tsmc-dcbot
+  careerhack-dcbot:
+    image: us-central1-docker.pkg.dev/tsmccareerhack2024-icsd-grp3/tsmccareerhack2024-icsd-grp3-repository/careerhack-dcbot:1.0.0
     ports:
       - "8765:8765"
     env_file:
       - "dcbot/.env"
     networks:
-      - tsmc-network
+      - careerhack-network
     volumes:
       - ./dcbot:/app
-  tsmc-monitor:
-    image: tsmc-monitor
+  careerhack-monitor:
+    image: us-central1-docker.pkg.dev/tsmccareerhack2024-icsd-grp3/tsmccareerhack2024-icsd-grp3-repository/careerhack-monitor:1.0.0
     ports:
       - "8080:8080"
     env_file:
       - "monitor/.env"
     networks:
-      - tsmc-network
+      - careerhack-network
     volumes:
       - ./monitor:/app
 
 
 networks:
-  tsmc-network:
+  careerhack-network:
     driver: bridge
