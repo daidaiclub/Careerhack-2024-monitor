@@ -139,20 +139,16 @@ def create_app() -> Flask:
         return jsonify({'message': 'invalid file'}), 400
 
     @app.route(
-        '''
-        /dcbot/guilds/<guild_id>/channels/<channel_id>/cloud_run_services/
-        <region>/<project_id>/<service_name>
-        ''',
+        '/dcbot/guilds/<guild_id>/channels/<channel_id>/' + 
+        'cloud_run_services/<region>/<project_id>/<service_name>',
         methods=['POST'])
     def register_cloud_run_service(guild_id, channel_id, region, project_id, service_name):
         return dcbot.register_cloud_run_service(
             guild_id, channel_id, region, project_id, service_name)
 
     @app.route(
-        '''
-        /dcbot/guilds/<guild_id>/channels/<channel_id>/cloud_run_services/
-        <region>/<project_id>/<service_name>
-        ''',
+        '/dcbot/guilds/<guild_id>/channels/<channel_id>/' +
+        'cloud_run_services/<region>/<project_id>/<service_name>',
         methods=['DELETE'])
     def unregister_cloud_run_service(guild_id, channel_id, region, project_id, service_name):
         return dcbot.unregister_cloud_run_service(
