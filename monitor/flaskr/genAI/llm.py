@@ -153,7 +153,7 @@ class LLM:
    - Request Count (5xx) 大於 5
    - Container CPU Utilization (%) 大於 60
    - Container Memory Utilization (%) 大於 60
-2. 對於每個異常指標，提供詳細的問題描述、可能原因及解決方案。
+2. 在問題描述中，針對每個異常指標，提出具體描述，並用列點的形式呈現，並在最後進行總結。
 
 任務輸出格式：
 - 問題描述：[針對特定異常指標的具體描述]
