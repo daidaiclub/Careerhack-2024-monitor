@@ -325,7 +325,7 @@ def genai(temp_dir: str):
             if mem_util > 50 or mem_util < 30:
                 mdpdf += '### Memory 自動調整操作\n'
                 mdpdf += f'Memory 建議**{"增加" if mem_util > 50 else "減少"}**資源\n'
-
+        i += 1
     return mdpdf
 
 
