@@ -99,7 +99,7 @@ def polling_metric(crpm: CloudRunPerformanceMonitor):
         {
             'metric_type': 'run.googleapis.com/request_latencies',
             'options': {
-                'metric_label': 'Container Startup Latency (ms)',
+                'metric_label': 'Request Latency (ms)',
             }
         },
         {
@@ -294,7 +294,7 @@ def query(cr: CloudRun, channel_id):
     #     crm.memory.scale_down()
 
     request_count = metrics[-1].get('Request Count', 50)
-    request_latencies = metrics[-1].get('Container Startup Latency (ms)', 0)
+    request_latencies = metrics[-1].get('Request Latency (ms)', 0)
     instance_count = metrics[-1].get('Instance Count', 1)
     container_startup_latencies = metrics[-1].get('Container Startup Latency (ms)', 0)
     cpu, mem = 0, 0
