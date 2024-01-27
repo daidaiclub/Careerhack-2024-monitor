@@ -172,9 +172,14 @@ def query(cr: CloudRun, channel_id):
         set_lastest_llm_query_time(cr.region, cr.project_id, cr.service_name, datetime.now().isoformat())
 
         # todo: send to discord by websocket
+        message = f'- service name: **{cr.service_name}**\n'
+        message += f'  - project id: **{cr.project_id}**\n'
+        message += f'  - region: **{cr.region}**\n'
+        message += text
+
         ws_message = {
             'channel_id': channel_id,
-            'message': text
+            'message': message
         }
         DCBotWebSocket.send(json.dumps(ws_message))
         # print(text)
