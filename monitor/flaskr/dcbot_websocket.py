@@ -25,17 +25,20 @@ class DCBotWebSocket:
         print(f'connecting dcbot to {DCBOT_SOCKET_URI}', flush=True)
         connected_event = asyncio.Event()
 
-        def on_open():
+        def on_open(ws):
             logging.debug('dcbot opened')
             connected_event.set()
 
-        def on_message(message):
+        def on_message(ws, message):
             logging.debug('dcbot message: %s', message)
 
-        def on_error(error):
+        def on_error(ws, error):
             logging.error('dcbot error: %s', error)
 
-        def on_close():
+        def on_close(ws, close_status_code, close_msg):
+            if close_status_code == 1006:
+                logging.error('dcbot closed: %s', close_msg)
+
             logging.debug('dcbot closed')
             connected_event.clear()
             DCBotWebSocket._ws = None
