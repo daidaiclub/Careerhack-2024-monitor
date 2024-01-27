@@ -3,10 +3,19 @@
 import os
 import asyncio
 import threading
-import logging
 import websocket
-
 from websocket import WebSocketException
+import logging
+
+# --- logger
+
+logger = logging.getLogger(__name__)
+logger.setLevel(level=logging.DEBUG)
+handler = logging.StreamHandler()
+formatter = logging.Formatter(
+    '%(asctime)s %(levelname)s [%(funcName)s]: %(message)s')
+handler.setFormatter(formatter)
+logger.addHandler(handler)
 
 DCBOT_SOCKET_URI = os.getenv('DCBOT_SOCKET_URI')
 
@@ -26,20 +35,20 @@ class DCBotWebSocket:
         connected_event = asyncio.Event()
 
         def on_open(ws):
-            logging.debug('dcbot opened')
+            logger.debug('dcbot connected %s', ws)
             connected_event.set()
 
         def on_message(ws, message):
-            logging.debug('dcbot message: %s', message)
+            logger.debug('dcbot message: %s', message)
 
         def on_error(ws, error):
-            logging.error('dcbot error: %s', error)
+            logger.error('dcbot error: %s', error)
 
         def on_close(ws, close_status_code, close_msg):
             if close_status_code == 1006:
-                logging.error('dcbot closed: %s', close_msg)
+                logger.error('dcbot closed: %s', close_msg)
 
-            logging.debug('dcbot closed')
+            logger.debug('dcbot closed: %s', close_msg)
             connected_event.clear()
             DCBotWebSocket._ws = None
 
@@ -65,15 +74,15 @@ class DCBotWebSocket:
         Returns:
             bool: True if the message was sent successfully, False otherwise.
         """
-        logging.debug('sending message to dcbot: %s', message)
+        logger.debug('sending message to dcbot: %s', message)
         try:
             DCBotWebSocket._ws.send(message)
         except WebSocketException as e:
-            logging.error('error: %s', e)
+            logger.error('error: %s', e)
             try:
                 DCBotWebSocket.connect_dcbot()
                 DCBotWebSocket._ws.send(message)
             except WebSocketException as inner_e:
-                logging.error('error: %s', inner_e)
+                logger.error('error: %s', inner_e)
                 return False
         return True
