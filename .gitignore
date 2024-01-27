@@ -27,3 +27,5 @@ pyvenv.cfg
 credentials.json
 .github
 !/.github
+
+monitor/monitor.db
