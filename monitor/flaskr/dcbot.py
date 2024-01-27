@@ -99,7 +99,7 @@ def polling_metric(crpm: CloudRunPerformanceMonitor):
         {
             'metric_type': 'run.googleapis.com/request_latencies',
             'options': {
-                'metric_label': 'Container Startup Latency (ms)',
+                'metric_label': 'Request Latency (ms)',
             }
         },
         {
@@ -282,18 +282,87 @@ def query(cr: CloudRun, channel_id):
 
     cpu_util = metrics[-1].get('Container CPU Utilization (%)', 0)
     mem_util = metrics[-1].get('Container Memory Utilization (%)', 0)
-
     crm = CloudRunResourceManager(cr)
+    # if cpu_util > 50:
+    #     crm.cpu.scale_up()
+    # elif cpu_util < 30:
+    #     crm.cpu.scale_down()
+
+    # if mem_util > 50:
+    #     crm.memory.scale_up()
+    # elif mem_util < 30:
+    #     crm.memory.scale_down()
+
+    request_count = metrics[-1].get('Request Count', 50)
+    request_latencies = metrics[-1].get('Request Latency (ms)', 0)
+    instance_count = metrics[-1].get('Instance Count', 1)
+    container_startup_latencies = metrics[-1].get('Container Startup Latency (ms)', 0)
+    cpu, mem = 0, 0
 
     if cpu_util > 50:
-        crm.cpu.scale_up()
+        cpu += 1
     elif cpu_util < 30:
-        crm.cpu.scale_down()
-
+        cpu -= 1
+    
     if mem_util > 50:
-        crm.memory.scale_up()
+        mem += 1
     elif mem_util < 30:
+        mem -= 1
+    
+    if request_count > 100:
+        cpu += 1
+        mem += 1
+    elif request_count < 50:
+        cpu -= 1
+        mem -= 1
+    
+    if request_latencies > 100:
+        cpu += 1
+    elif request_latencies < 50:
+        cpu -= 1
+
+    if instance_count > 2:
+        cpu += 1
+        mem += 1
+    elif instance_count < 1:
+        cpu -= 1
+        mem -= 1
+
+    if container_startup_latencies > 100:
+        cpu += 1
+        mem += 1
+    elif container_startup_latencies == 0:
+        cpu -= 1
+        mem -= 1
+
+    message = f'- service name: **{cr.service_name}**\n'
+    message += f'  - project id: **{cr.project_id}**\n'
+    message += f'  - region: **{cr.region}**\n'
+    
+    if cpu > 0:
+        crm.cpu.scale_up()
+        DCBotWebSocket.send(json.dumps({
+            'channel_id': channel_id,
+            'message': message + 'CPU **增加**資源'
+        }))
+    elif cpu < 0:
+        crm.cpu.scale_down()
+        DCBotWebSocket.send(json.dumps({
+            'channel_id': channel_id,
+            'message': message + 'CPU **減少**資源'
+        }))
+    if mem > 0:
+        crm.memory.scale_up()
+        DCBotWebSocket.send(json.dumps({
+            'channel_id': channel_id,
+            'message': message + 'Memory **增加**資源'
+        }))
+    elif mem < 0:
         crm.memory.scale_down()
+        DCBotWebSocket.send(json.dumps({
+            'channel_id': channel_id,
+            'message': message + 'Memory **減少**資源'
+        }))
 
 def run_timer(guild_id, channel_id, cr: CloudRun):
     """
