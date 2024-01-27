@@ -18,7 +18,6 @@ import io
 dotenv.load_dotenv()
 
 DISCORD_TOKEN = os.getenv('DISCORD_TOKEN')
-DISCORD_CHANNEL_ID = int(os.getenv('DISCORD_CHANNEL_ID'))
 WEBSOCKET_PORT = int(os.getenv('WEBSOCKET_PORT'))
 MONITOR_URL = os.getenv('MONITOR_URL')
 
