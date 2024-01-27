@@ -213,13 +213,14 @@ def genai(temp_dir: str):
 
     # Generate markdown
     mdpdf = "# 報告書\n"
-    for i in range(1, len(merged_data) - 1):
+    i = 2
+    while i < len(merged_data):
         metrics = [item.to_dict() for item in merged_data.iloc][i-2:i]
         if MetrixUtil.check_metrics_abnormalities(metrics):
             mdpdf += f'## 異常時間: {merged_data.index[i-1]}\n'
             mdpdf += LLM.AnalysisError.gen(data=f'指標：{metrics}')
             mdpdf += '\n'
-
+            i += 10
             cpu_util = metrics[-1].get('Container CPU Utilization (%)', 0)
             mem_util = metrics[-1].get('Container Memory Utilization (%)', 0)
 
