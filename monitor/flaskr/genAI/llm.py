@@ -146,13 +146,13 @@ class LLM:
 - 度量參數：涵蓋 CPU 使用率、記憶體使用率、響應時間及錯誤率等。
 
 數據分析任務：
-1. 分析數據，辨識出以下異常指標：
+1. 分析數據，以下為判斷異常指標的方法，請依據此資料判斷各個指標是否為異常指標：
    - Container Startup Latency (ms)
-   - Instance Count (active) 大於 2
-   - Request Count (4xx) 大於 5
-   - Request Count (5xx) 大於 5
-   - Container CPU Utilization (%) 大於 60
-   - Container Memory Utilization (%) 大於 60
+   - Instance Count (active) > 2
+   - Request Count (4xx) > 5
+   - Request Count (5xx) > 5
+   - Container CPU Utilization (%) > 60
+   - Container Memory Utilization (%) > 60
 2. 在問題描述中，對問題提出具體描述，並用列點的形式呈現，並在問題描述的最後進行問題的總結。
 
 任務輸出格式：
