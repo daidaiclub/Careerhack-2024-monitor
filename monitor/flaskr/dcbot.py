@@ -279,6 +279,16 @@ def unregister_cloud_run_service(guild_id, channel_id, region, project_id, servi
         return jsonify({'message': 'Service not found'}), 404
     
 def list_cloud_run_services(guild_id, channel_id):
+    """
+    Retrieve a list of cloud run services based on the guild ID and channel ID.
+
+    Args:
+        guild_id (int): The ID of the guild.
+        channel_id (int): The ID of the channel.
+
+    Returns:
+        tuple: A tuple containing the JSON representation of the cloud run services and the HTTP status code.
+    """
     db = get_db()
     cursor = db.cursor()
     
