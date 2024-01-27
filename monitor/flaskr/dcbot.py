@@ -15,7 +15,6 @@ from flaskr.genAI.cloud import (CloudRun, CloudRunPerformanceMonitor,
                                 UntilNowTimeRange, SpecificTimeRange, CloudRunResourceManager)
 from flaskr.dcbot_websocket import DCBotWebSocket
 
-
 def check_metrics_abnormalities(metrics: list[dict]):
     """
     Checks if the given metrics indicate abnormalities.
@@ -307,10 +306,10 @@ def genai(temp_dir: str):
 
     # Generate markdown
     mdpdf = "# 報告書\n"
-    for i in range(2, len(merged_data) - 1):
+    for i in range(1, len(merged_data) - 1):
         metrics = [item.to_dict() for item in merged_data.iloc][i-2:i]
         if check_metrics_abnormalities(metrics):
-            mdpdf += f'## 異常時間: {merged_data.index[i]}\n'
+            mdpdf += f'## 異常時間: {merged_data.index[i-1]}\n'
             mdpdf += LLM.AnalysisError.gen(data=f'指標：{metrics}')
             mdpdf += '\n'
 
