@@ -31,7 +31,7 @@ def check_metrics_abnormalities(metrics: list[dict]):
     if metric.get('Container Startup Latency (ms)', 0) > 0:
         return True
 
-    if metric.get('Instance Count (active)', 0) > 4:
+    if metric.get('Instance Count (active)', 0) > 2:
         return True
 
     if metric.get('Request Count (4xx)', 0) > 5:
