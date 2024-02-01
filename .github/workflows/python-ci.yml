@@ -42,5 +42,7 @@ jobs:
         pip install -r monitor/requirements.txt
     - name: Run PyTest
       run: |
-        coverage run -m pytest tests
+        export PYTHONPATH=$PYTHONPATH:$(pwd)/monitor
+        cd monitor
+        coverage run -m pytest ../tests
         coverage report

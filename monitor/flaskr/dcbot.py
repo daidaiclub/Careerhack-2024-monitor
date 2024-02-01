@@ -7,13 +7,23 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from functools import reduce
 from flask import jsonify
 import pandas as pd
-from flaskr import logger
+import logging
 
 from flaskr.genAI.llm import LLM
 from flaskr.db import get_db
 from flaskr.genAI.cloud import (CloudRun, CloudRunPerformanceMonitor,
                                 UntilNowTimeRange, SpecificTimeRange, CloudRunResourceManager)
 from flaskr.dcbot_websocket import DCBotWebSocket
+
+# --- logger
+
+logger = logging.getLogger(__name__)
+logger.setLevel(level=logging.DEBUG)
+handler = logging.StreamHandler()
+formatter = logging.Formatter(
+    '%(asctime)s %(levelname)s [%(funcName)s]: %(message)s')
+handler.setFormatter(formatter)
+logger.addHandler(handler)
 
 def check_metrics_abnormalities(metrics: list[dict]):
     """
@@ -33,7 +43,7 @@ def check_metrics_abnormalities(metrics: list[dict]):
     if metric.get('Container Startup Latency (ms)', 0) > 0:
         return True
 
-    if metric.get('Instance Count (active)', 0) > 4:
+    if metric.get('Instance Count (active)', 0) > 2:
         return True
 
     if metric.get('Request Count (4xx)', 0) > 5:
@@ -89,7 +99,7 @@ def polling_metric(crpm: CloudRunPerformanceMonitor):
         {
             'metric_type': 'run.googleapis.com/request_latencies',
             'options': {
-                'metric_label': 'Container Startup Latency (ms)',
+                'metric_label': 'Request Latency (ms)',
             }
         },
         {
@@ -272,19 +282,133 @@ def query(cr: CloudRun, channel_id):
 
     cpu_util = metrics[-1].get('Container CPU Utilization (%)', 0)
     mem_util = metrics[-1].get('Container Memory Utilization (%)', 0)
-
     crm = CloudRunResourceManager(cr)
+    # if cpu_util > 50:
+    #     crm.cpu.scale_up()
+    # elif cpu_util < 30:
+    #     crm.cpu.scale_down()
+
+    # if mem_util > 50:
+    #     crm.memory.scale_up()
+    # elif mem_util < 30:
+    #     crm.memory.scale_down()
+
+    request_count = metrics[-1].get('Request Count', 50)
+    request_latencies = metrics[-1].get('Request Latency (ms)', 0)
+    instance_count = metrics[-1].get('Instance Count', 1)
+    container_startup_latencies = metrics[-1].get('Container Startup Latency (ms)', 0)
+    cpu, mem = 0, 0
 
     if cpu_util > 50:
-        crm.cpu.scale_up()
+        cpu += 1
     elif cpu_util < 30:
-        crm.cpu.scale_down()
-
+        cpu -= 1
+    
     if mem_util > 50:
-        crm.memory.scale_up()
+        mem += 1
     elif mem_util < 30:
-        crm.memory.scale_down()
+        mem -= 1
+    
+    if request_count > 100:
+        cpu += 1
+        mem += 1
+    elif request_count < 50:
+        cpu -= 1
+        mem -= 1
+    
+    if request_latencies > 100:
+        cpu += 1
+    elif request_latencies < 50:
+        cpu -= 1
 
+    if instance_count > 2:
+        cpu += 1
+        mem += 1
+    elif instance_count < 1:
+        cpu -= 1
+        mem -= 1
+
+    if container_startup_latencies > 100:
+        cpu += 1
+        mem += 1
+    elif container_startup_latencies == 0:
+        cpu -= 1
+        mem -= 1
+
+    message = f'- service name: **{cr.service_name}**\n'
+    message += f'  - project id: **{cr.project_id}**\n'
+    message += f'  - region: **{cr.region}**\n'
+    
+    if cpu > 0:
+        crm.cpu.scale_up()
+        DCBotWebSocket.send(json.dumps({
+            'channel_id': channel_id,
+            'message': message + 'CPU **增加**資源'
+        }))
+    elif cpu < 0:
+        crm.cpu.scale_down()
+        DCBotWebSocket.send(json.dumps({
+            'channel_id': channel_id,
+            'message': message + 'CPU **減少**資源'
+        }))
+    if mem > 0:
+        crm.memory.scale_up()
+        DCBotWebSocket.send(json.dumps({
+            'channel_id': channel_id,
+            'message': message + 'Memory **增加**資源'
+        }))
+    elif mem < 0:
+        crm.memory.scale_down()
+        DCBotWebSocket.send(json.dumps({
+            'channel_id': channel_id,
+            'message': message + 'Memory **減少**資源'
+        }))
+
+def run_timer(guild_id, channel_id, cr: CloudRun):
+    """
+    Run a timer that periodically executes the query function for a given CloudRun instance.
+
+    Args:
+        guild_id (str): The ID of the guild.
+        channel_id (str): The ID of the channel.
+        cr (CloudRun): The CloudRun instance.
+
+    Returns:
+        None
+    """
+    if not is_cloud_run_service_registered(
+            guild_id, channel_id, cr.region, cr.project_id, cr.service_name):
+        return
+    timer = threading.Timer(30, run_timer, [guild_id, channel_id, cr])
+    timer.daemon = True
+    timer.start()
+    query(cr, channel_id)
+
+def init_already_registered_services():
+    """
+    Initializes the already registered Cloud Run services.
+
+    Returns:
+        None
+    """
+    db = get_db()
+    cursor = db.cursor()
+
+    cursor.execute('''
+    SELECT * FROM cloud_run_service
+    ''')
+
+    for row in cursor.fetchall():
+        guild_id = row[5]
+        channel_id = row[3]
+        region = row[0]
+        project_id = row[1]
+        service_name = row[2]
+        cr = CloudRun(region, project_id, service_name)
+        timer_thread = threading.Thread(target=run_timer, args=(
+            guild_id, channel_id, cr))
+        timer_thread.daemon = True
+        timer_thread.start()
 
 def genai(temp_dir: str):
     """
@@ -344,14 +468,6 @@ def register_cloud_run_service(guild_id, channel_id, region, project_id, service
     Returns:
         tuple: A tuple containing the response message and status code.
     """
-    def run_timer(guild_id, channel_id, cr: CloudRun):
-        if not is_cloud_run_service_registered(
-                guild_id, channel_id, cr.region, cr.project_id, cr.service_name):
-            return
-        timer = threading.Timer(30, run_timer, [guild_id, channel_id, cr])
-        timer.daemon = True
-        timer.start()
-        query(cr, channel_id)
     db = get_db()
     cursor = db.cursor()
 
