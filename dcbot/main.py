@@ -136,24 +136,6 @@ async def ping(ctx, arg=''):
 
 
 @client.tree.command()
-async def echo_by_monitor(interaction):
-    """test send message to monitor to echo back"""
-    url = MONITOR_URL + '/dcbot/message'
-    payload = {
-        'message': 'hello to monitor'
-    }
-    headers = {
-        'Content-Type': 'application/json'
-    }
-    logger.debug('url: %s', url)
-    logger.debug('payload: %s', payload)
-    logger.debug('headers: %s', headers)
-    response = requests.post(url, json=payload, headers=headers, timeout=10)
-    logger.debug('response: %s', response)
-    await interaction.response.send_message(f'echo_by_monitor: {response}', ephemeral=True)
-
-
-@client.tree.command()
 async def slash_ping(interaction: discord.interactions.Interaction, arg: str = ''):
     """test slash ping pong"""
     logger.debug('slash_ping %s', arg)
@@ -200,16 +182,6 @@ async def gen_report_by_csv(interaction: discord.interactions.Interaction, zip_f
     else:
         logger.debug('no file received')
         await interaction.response.send_message('no file, try again')
-
-# @client.tree.command()
-# async def login_gcp(interaction, email: str = '', password: str = ''):
-#     print(f'[login_gcp] email: {email}, password: {password}', flush=True)
-#     await interaction.response.send_message('login success', ephemeral = True)
-
-# @client.tree.command()
-# async def logout_gcp(interaction):
-#     print('[logout_gcp]', flush=True)
-#     await interaction.response.send_message('logout success', ephemeral = True)
 
 
 @client.tree.command()
